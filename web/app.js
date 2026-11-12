@@ -174,7 +174,8 @@ function clearMail() {
 async function mailStatus() {
   const mail = await api('gmail/status');
   const secure = window.isSecureContext && window.location.protocol === 'https:';
-  $('#mail-form').hidden = !mail.enabled || !secure;
+  $('#mail-form').hidden = !mail.enabled || !secure || (!mail.connected && !mail.unreadable);
+  $('#gmail-login').hidden = mail.connected && secure;
   $('#mail-connect').hidden = mail.connected;
   $('#mail-unlock').hidden = !mail.connected;
   $('#mail-disconnect').hidden = !mail.connected && !mail.unreadable;
@@ -301,6 +302,17 @@ $('#qr-image').addEventListener('change', async (event) => {
     status.textContent = 'TikTok-Link erkannt. Ob die Freigabe am PC möglich ist, zeigt TikTok nach dem Öffnen.';
   } catch (error) { status.textContent = error.message; }
   finally { field.disabled = false; }
+});
+click('#gmail-login', async () => {
+  await mailStatus();
+  if (!$('#mail-setup').hidden) {
+    const guide = $('#mail-setup details');
+    guide.open = true;
+    guide.querySelector('summary').focus();
+    return;
+  }
+  $('#mail-form').hidden = false;
+  $('#mail-form').elements.password.focus();
 });
 submit('#mail-form', async (event) => {
   const button = event.submitter;
