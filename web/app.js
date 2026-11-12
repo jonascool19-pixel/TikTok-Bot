@@ -219,7 +219,9 @@ let browserRefresh;
 let browserInput = Promise.resolve();
 function stopBrowserView() {
   clearTimeout(browserTimer);
+  browserRefresh?.abort();
   $('#browser-controls').hidden = true;
+  $('#browser-choice-label').hidden = true;
   $('#browser-image').removeAttribute('src');
   if (browserFrame) URL.revokeObjectURL(browserFrame);
 }
@@ -272,13 +274,27 @@ click('#browser-start', async () => {
 function sendBrowserInput(data) {
   const task = browserInput.then(async () => {
     if ($('#browser-controls').hidden) return;
-    await api('browser/input', data);
-    $('#browser-input-status').textContent = '';
+    const result = await api('browser/input', data);
+    const choices = $('#browser-choice');
+    $('#browser-choice-label').hidden = !result.choices;
+    if (result.choices) {
+      choices.replaceChildren(...result.choices.map(({ label, value, disabled, selected }) => {
+        const entry = new Option(label, value, false, selected);
+        entry.disabled = disabled;
+        return entry;
+      }));
+      choices.focus();
+      choices.scrollIntoView({ block: 'nearest' });
+    }
+    $('#browser-input-status').textContent = result.focused ? 'TikTok-Eingabefeld aktiv. Du kannst jetzt tippen.' : '';
     await updateBrowserView();
   });
   browserInput = task.catch((error) => { $('#browser-input-status').textContent = error.message; });
   return browserInput;
 }
+$('#browser-choice').addEventListener('change', (event) => {
+  void sendBrowserInput({ kind: 'select', value: event.target.value });
+});
 click('#browser-image', (event) => {
   event.target.focus({ preventScroll: true });
   const bounds = event.target.getBoundingClientRect();

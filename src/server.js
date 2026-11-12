@@ -403,7 +403,7 @@ async function handle(req, res) {
     if (path === '/api/browser/cancel') {
       browserLogin = undefined;
       await webChat.cancel();
-    } else if (path === '/api/browser/input') await webChat.input(input);
+    } else if (path === '/api/browser/input') return json(res, await webChat.input(input));
     else if (path === '/api/browser/finish') {
       const bot = await webChat.finish();
       if (!bot || bot.toLowerCase() === state.config.creator.toLowerCase()) throw new RequestError(400, 'Separates Bot-Profil konnte nicht erkannt werden.');

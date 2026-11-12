@@ -108,17 +108,32 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     }),
     screenshot: () => run(async () => {
       if (!login || !page || !trusted()) throw new Error('Anmeldung pausiert. Öffne die TikTok-Anmeldung erneut.');
-      return page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000 });
+      return page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000, scale: 'css' });
     }),
-    input: ({ kind, x, y, text, key }) => run(async () => {
+    input: ({ kind, x, y, text, key, value }) => run(async () => {
       if (!login || !page || !trusted()) throw new Error('TikTok-Anmeldung ist nicht geöffnet');
       if (kind === 'click' && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x < 1000 && y >= 0 && y < 720) {
+        const choices = await page.evaluate(({ x, y }) => {
+          const select = document.elementFromPoint(x, y)?.closest('select');
+          if (!select || select.disabled) return null;
+          select.focus();
+          return Array.from(select.options, (option) => ({
+            label: option.label, value: option.value, disabled: option.matches(':disabled'), selected: option.selected,
+          })).slice(0, 250);
+        }, { x, y });
+        if (choices) return { choices };
         await page.mouse.click(x, y);
+      } else if (kind === 'select' && typeof value === 'string' && value.length <= 200) {
+        const select = page.locator('select:focus');
+        if (await select.count() !== 1) throw new Error('Öffne zuerst die Auswahl in der TikTok-Ansicht.');
+        await select.selectOption({ value }, { timeout: 2500 });
       } else if (kind === 'text' && typeof text === 'string' && text.length <= 300) {
         await page.keyboard.insertText(text);
       } else if (kind === 'key' && ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'Control+a', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) {
         await page.keyboard.press(key);
       } else throw new Error('Ungültige Eingabe');
+      const focused = await page.evaluate(() => document.activeElement?.matches('input:not([type="button"]):not([type="submit"]), textarea, [contenteditable="true"]') ?? false);
+      return { focused };
     }),
     finish: () => run(async () => {
       if (!login || !page || !trusted()) throw new Error('TikTok-Anmeldung ist nicht geöffnet');
