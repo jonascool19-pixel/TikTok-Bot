@@ -513,6 +513,10 @@ async function handle(req, res) {
     const config = settings(input.config);
     const nextSecrets = secrets(input.secrets, state.secrets);
     if (input.disconnect === true) { nextSecrets.sessionId = ''; nextSecrets.targetIdc = ''; config.sendEnabled = false; }
+    const botChanged = config.bot.toLowerCase() !== state.config.bot.toLowerCase();
+    if (botChanged && state.secrets.sessionId && !input.disconnect && nextSecrets.sessionId === state.secrets.sessionId) {
+      throw new RequestError(400, 'Hinterlege beim Wechsel des Bot-Kontos dessen neue Websitzung oder entferne zuerst die alte Sitzung.');
+    }
     if (nextSecrets.aiUrl) {
       let url;
       try { url = new URL(nextSecrets.aiUrl); } catch {}

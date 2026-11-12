@@ -25,14 +25,15 @@ BOT_EULER_CLIENT_ID=DEINE_CLIENT_ID
 BOT_EULER_CLIENT_SECRET=DEIN_CLIENT_SECRET
 BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
 BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
-<details><summary>Manuelle Websitzung für den Chatversand</summary>
+<details id="manual-session"><summary>Versandzugang am PC einrichten oder ändern</summary>
 <p>Melde dich bei TikTok mit dem Bot-Konto an. Für diese Methode braucht der Bot die Sitzungsdaten und einen Euler-Stream-Schlüssel mit Sendefreigabe. Beim Senden erhält Euler Stream die Sitzungsdaten.</p>
 <div class="grid"><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
 <label>Euler-Stream-Schlüssel<input name="providerKey" type="password" autocomplete="off" placeholder="Leer lassen, um den Wert zu behalten"></label>
 <label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
 <label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
-<label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
 </details>
+<label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
+<p><a href="#antworten">Zum Chat und zur Testnachricht</a></p>
 <details id="qr-browser"><summary>QR-Code am PC öffnen</summary>
 <p>Lass die Euler-Anmeldung geöffnet. Speichere einen Screenshot des QR-Codes und wähle ihn hier aus. Das Bild wird nur in deinem Browser gelesen.</p>
 <label>Screenshot mit QR-Code<input id="qr-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
@@ -62,7 +63,7 @@ BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
 <section data-page="stimme"><h2>Eigene Aufnahmen</h2><form id="clip-form"><label>Name<input name="name" maxlength="80" required></label>
 <label>Audiodatei (max. 2 MB)<input name="file" type="file" accept="audio/*,.wav,.webm" required></label><button>Aufnahme hochladen</button></form>
 <button id="record" type="button" class="secondary">Mikrofonaufnahme starten</button><p>Mikrofonzugriff benötigt HTTPS oder localhost. Über HTTP kannst du eine fertige Audiodatei hochladen.</p><ul id="clips"></ul></section>
-<section data-page="antworten"><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
+<section data-page="antworten"><h2>Manuell in den LIVE-Chat schreiben</h2><p id="send-status" aria-live="polite"></p><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
 <section id="postfach"><h2>Gmail-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
 <p><a href="https://mail.google.com/mail/u/0/" target="_blank" rel="noopener noreferrer">Gmail-Konto Login</a> · Öffnet Gmail in einem neuen Tab.</p>
 <div id="mail-setup"><p>Du kannst ein bestehendes Gmail-Konto für den Bot verwenden. Für den Abruf hier im Dashboard ist eine einmalige Freigabe nötig.</p>

@@ -129,6 +129,12 @@ function status() {
   $('#tiktok-profile').hidden = !profileAvailable;
   const qrAvailable = state.eulerLogin && location.protocol === 'https:';
   $('#tiktok-euler-help').hidden = qrAvailable;
+  $('#tiktok-euler').textContent = state.eulerLinked ? 'Bot-Konto erneut verbinden' : 'Bot-Konto verbinden';
+  $('#disconnect').hidden = !state.connectedAccount;
+  $('#send button').disabled = !state.online || !state.config.sendEnabled || !state.connectedAccount;
+  $('#send-status').textContent = !state.connectedAccount ? 'Richte zuerst den Versandzugang unter TikTok-Verbindung ein.'
+    : !state.config.sendEnabled ? 'Aktiviere und speichere den Versand unter TikTok-Verbindung.'
+      : !state.online ? 'Starte deinen LIVE, um eine Testnachricht zu senden.' : 'LIVE verbunden. Du kannst eine Testnachricht senden.';
   const bot = state.config.bot ? '@' + state.config.bot : '';
   $('#account-status').textContent = state.connectedAccount
     ? bot + (state.config.sendEnabled ? ' · Versand eingerichtet. Teste ihn im LIVE.' : ' · Konto hinterlegt. Versand ist ausgeschaltet.')
