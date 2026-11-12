@@ -115,6 +115,7 @@ function render() {
 }
 
 function status() {
+  $('#browser-setup').hidden = !state.config.browserMode;
   $('#status').textContent = state.status;
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
   $('#tiktok-profile').hidden = !profileAvailable;
@@ -152,7 +153,7 @@ async function load() {
 
 function config() {
   const result = {};
-  for (const key of ['creator', 'bot', 'voice', 'style', 'paused', 'sendEnabled', 'aiEnabled', 'volume', 'speed', 'delay']) {
+  for (const key of ['creator', 'bot', 'voice', 'style', 'paused', 'sendEnabled', 'aiEnabled', 'volume', 'speed', 'delay', 'browserMode']) {
     const field = form.elements[key];
     result[key] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? field.valueAsNumber : field.value;
   }
@@ -201,6 +202,56 @@ submit('#password-form', async (event) => {
 });
 click('#logout', async () => { await api('logout', {}); await load(); notice(''); });
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
+let browserFrame;
+let browserTimer;
+function stopBrowserView() {
+  clearTimeout(browserTimer);
+  $('#browser-controls').hidden = true;
+  $('#browser-image').removeAttribute('src');
+  if (browserFrame) URL.revokeObjectURL(browserFrame);
+}
+async function updateBrowserView() {
+  if ($('#browser-controls').hidden) return;
+  try {
+    const response = await fetch('/api/browser/image');
+    if (!response.ok) throw new Error('Browseransicht nicht verfügbar.');
+    const blob = await response.blob();
+    if ($('#browser-controls').hidden) return;
+    if (browserFrame) URL.revokeObjectURL(browserFrame);
+    browserFrame = URL.createObjectURL(blob);
+    $('#browser-image').src = browserFrame;
+    browserTimer = setTimeout(updateBrowserView, 850);
+  } catch (error) { notice(error.message, true); }
+}
+click('#browser-start', async () => {
+  if (location.protocol !== 'https:') throw new Error('Öffne zuerst die HTTPS-Adresse des Dashboards.');
+  const field = $('#browser-password');
+  const password = field.value;
+  field.value = '';
+  stopBrowserView();
+  await api('browser/start', { password });
+  $('#browser-controls').hidden = false;
+  void updateBrowserView();
+});
+click('#browser-image', (event) => {
+  const bounds = event.target.getBoundingClientRect();
+  return api('browser/input', { kind: 'click', x: (event.clientX - bounds.left) * 1000 / bounds.width,
+    y: (event.clientY - bounds.top) * 720 / bounds.height });
+});
+click('#browser-type', async () => {
+  const field = $('#browser-text');
+  const text = field.value;
+  field.value = '';
+  await api('browser/input', { kind: 'text', text });
+});
+click('#browser-enter', () => api('browser/input', { kind: 'key', key: 'Enter' }));
+click('#browser-finish', async () => {
+  await api('browser/finish', {});
+  stopBrowserView();
+  await load();
+  notice('Bot-Konto übernommen. Aktiviere den Versand und speichere.');
+});
+click('#browser-cancel', async () => { stopBrowserView(); await api('browser/cancel', {}); });
 click('#tiktok-profile', async () => {
   const { url } = await api('tiktok/profile/start', {});
   window.location.assign(url);

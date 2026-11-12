@@ -36,6 +36,7 @@ export function settings(input = {}) {
     speed: numeric(input.speed, 165, 90, 260),
     delay: numeric(input.delay, 30, 5, 180),
     paused: input.paused === true,
+    browserMode: input.browserMode === true,
     sendEnabled: input.sendEnabled === true,
     aiEnabled: input.aiEnabled === true,
     rules, commands,

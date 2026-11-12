@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.17/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.18/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -67,3 +67,7 @@ Das Dashboard zeigt die letzten 200 Einträge aus dem begrenzten Fehlerlog und k
 ## Entwicklung
 
 npm ci installiert die festgeschriebenen Abhängigkeiten. npm test führt die automatisierten Logiktests aus. Zum lokalen Start legst du das Admin-Passwort mit node src/server.js --init an und startest den Server mit node src/server.js. Ohne weitere Konfiguration hört er nur auf 127.0.0.1:8080. Für Sprachausgabe muss espeak-ng vorhanden sein. GitHub Actions prüft den Dienst auf Ubuntu und stellt für Versions-Tags ein Archiv samt Prüfsumme bereit.
+
+## Lokaler TikTok-Browser (Vorschau)
+
+Unter TikTok-Verbindung den Browsermodus aktivieren und speichern. Für die Anmeldung über HTTPS das Admin-Passwort erneut eingeben, dich in der angezeigten TikTok-Seite anmelden und Bot-Konto übernehmen wählen. Das Chromium-Profil bleibt lokal. Für Chatversand den Versand aktivieren und speichern. Der Modus nutzt keine Euler-API und liest sichtbare Textkommentare. Geschenke und Beitritte werden in diesem Modus noch nicht erfasst. TikTok-Seitenänderungen und die Sandbox-Konfiguration des Proxmox-CT können den Betrieb beeinflussen.

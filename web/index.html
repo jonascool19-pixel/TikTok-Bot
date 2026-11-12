@@ -12,6 +12,19 @@
 <section id="konto"><h2>Deinen LIVE mitlesen</h2>
 <p>Trage den @Namen ein, mit dem du streamst, und speichere. Sobald dein öffentlicher LIVE läuft, versucht der Bot, sich zu verbinden.</p>
 <label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label>
+<label class="check"><input name="browserMode" type="checkbox"> Lokalen TikTok-Browser verwenden (Vorschau)</label>
+<div id="browser-setup" hidden>
+<p>Speichere den Browsermodus und öffne das Dashboard über HTTPS. Melde dich danach im Browser des CT mit dem separaten Bot-Konto an.</p>
+<label>Admin-Passwort<input id="browser-password" type="password" autocomplete="current-password"></label>
+<button type="button" id="browser-start">TikTok-Anmeldung öffnen</button>
+<div id="browser-controls" hidden>
+<img id="browser-image" width="1000" height="720" alt="TikTok-Anmeldung im CT">
+<label>Texteingabe für das ausgewählte Feld<input id="browser-text" type="password" autocomplete="off" maxlength="300"></label>
+<button type="button" id="browser-type">Text eingeben</button>
+<button type="button" id="browser-enter">Eingabetaste</button>
+<button type="button" id="browser-finish">Bot-Konto übernehmen</button>
+<button type="button" id="browser-cancel">Schließen</button>
+</div></div>
 <h2>Mit dem Bot-Konto im Chat schreiben</h2>
 <p id="account-status" aria-live="polite"></p>
 <div class="actions"><button type="button" id="tiktok-euler">Bot-Konto verbinden</button><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>

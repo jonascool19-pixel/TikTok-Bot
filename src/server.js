@@ -9,6 +9,7 @@ import { naturalVoices, speak } from './audio.js';
 import { getLiveActions } from './live-actions.js';
 import { makeTikTokProfile } from './tiktok-profile.js';
 import { makeEuler } from './euler.js';
+import { browserChat } from './browser-chat.js';
 
 let state = load();
 if (process.argv.includes('--init')) {
@@ -64,6 +65,9 @@ let loginWindow = 0;
 const maxClipBytes = 2 * 1024 * 1024;
 const clipTypes = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/mp4']);
 const tiktok = makeTikTok({ event: onLiveEvent, status: (value) => { status = value; }, log });
+const webChat = browserChat(dataDir, { event: onLiveEvent, status: (value) => { status = value; }, log });
+let browserLogin;
+const liveOnline = () => state.config.browserMode ? webChat.online() : tiktok.online();
 const tiktokProfile = makeTikTokProfile();
 const euler = makeEuler();
 let eulerSending = false;
@@ -88,7 +92,8 @@ function reconfigure() {
   cancelAnswers();
   conversations.clear();
   seenJoins.clear();
-  tiktok.configure(state.config, state.secrets);
+  tiktok.configure(state.config.browserMode ? { ...state.config, creator: '' } : state.config, state.secrets);
+  webChat.configure(state.config);
 }
 
 function clearAudio() {
@@ -129,14 +134,15 @@ async function drainAudio() {
 
 function canSend() {
   return state.config.sendEnabled && state.config.bot &&
-    (eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc));
+    (state.config.browserMode || eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc));
 }
 
 async function send(text, automatic = false) {
   if (!canSend()) throw new Error('Bot-Konto ist nicht für den Versand verbunden');
   if (automatic && Date.now() - lastAutomatic < 12000) return false;
   const message = string(text, 150);
-  if (eulerLinked(state.config.bot)) {
+  if (state.config.browserMode) await webChat.send(message, state.config.bot);
+  else if (eulerLinked(state.config.bot)) {
     const room = tiktok.room();
     if (!room || eulerSending || Date.now() - eulerLastSend < 6000) throw new Error('Kein LIVE oder Sendepause aktiv');
     const account = state.eulerAccount;
@@ -190,7 +196,7 @@ function onLiveEvent(event) {
   const ticket = generation;
   const timer = setTimeout(async () => {
     try {
-      if (!tiktok.online() || ticket !== generation || state.config.paused) return;
+      if (!liveOnline() || ticket !== generation || state.config.paused) return;
       const answer = await generateAnswer(event.userId, text);
       if (answer && ticket === generation && !state.config.paused && await send(answer, true)) {
         conversations.set(event.userId, { text, answer, time: Date.now() });
@@ -387,6 +393,7 @@ async function handle(req, res) {
   const session = authenticate(req);
   if (!session) throw new RequestError(401, 'Bitte anmelden');
   if (method === 'POST' && path === '/api/logout') {
+    if (browserLogin === session) { browserLogin = undefined; await webChat.cancel(); }
     sessions.delete(session);
     return json(res, { ok: true });
   }
@@ -396,12 +403,45 @@ async function handle(req, res) {
     requireCondition(validPassword(input.password, 6) && input.current !== input.password, 'Neues Passwort mit 6 bis 200 Zeichen erforderlich');
     persist({ ...state, hash: passwordHash(input.password), firstLogin: false });
     sessions.clear();
+    if (browserLogin) { browserLogin = undefined; await webChat.cancel(); }
     newSession(res);
     return json(res, { ok: true });
   }
   if (state.firstLogin) {
     if (method === 'GET' && path === '/api/state') return json(res, { firstLogin: true });
     throw new RequestError(403, 'Zuerst Startpasswort ändern');
+  }
+  if (path.startsWith('/api/browser/')) {
+    if (!state.config.browserMode || process.env.BOT_SECURE_COOKIE !== '1') {
+      throw new RequestError(403, 'Aktiviere zuerst den Browsermodus und HTTPS.');
+    }
+    if (method === 'GET' && path === '/api/browser/image') {
+      if (browserLogin !== session) throw new RequestError(403, 'Starte zuerst die Browser-Anmeldung.');
+      const image = await webChat.screenshot();
+      res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+      return res.end(image);
+    }
+    if (method !== 'POST') throw new RequestError(404, 'Seite nicht gefunden');
+    const input = await body(req);
+    if (path === '/api/browser/start') {
+      if (!validPassword(input.password, 6) || !passwordMatches(input.password, state.hash)) throw new RequestError(403, 'Admin-Passwort ist falsch.');
+      await webChat.start();
+      browserLogin = session;
+      return json(res, { ok: true });
+    }
+    if (browserLogin !== session) throw new RequestError(403, 'Starte zuerst die Browser-Anmeldung.');
+    if (path === '/api/browser/cancel') {
+      browserLogin = undefined;
+      await webChat.cancel();
+    } else if (path === '/api/browser/input') await webChat.input(input);
+    else if (path === '/api/browser/finish') {
+      const bot = await webChat.finish();
+      if (!bot || bot.toLowerCase() === state.config.creator.toLowerCase()) throw new RequestError(400, 'Separates Bot-Profil konnte nicht erkannt werden.');
+      browserLogin = undefined;
+      persist({ ...state, config: { ...state.config, bot, sendEnabled: false, aiEnabled: false } });
+      reconfigure();
+    } else throw new RequestError(404, 'Seite nicht gefunden');
+    return json(res, { ok: true });
   }
   if (method === 'POST' && path === '/api/tiktok/profile/start') {
     if (!tiktokProfile.enabled) throw new RequestError(503, 'TikTok Login Kit ist noch nicht eingerichtet.');
@@ -417,12 +457,12 @@ async function handle(req, res) {
   }
   if (method === 'GET' && path === '/api/state') {
     return json(res, {
-      config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: tiktok.online(),
+      config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: liveOnline(),
       profileLogin: tiktokProfile.enabled,
       eulerLogin: euler.enabled,
       eulerLinked: Boolean(eulerLinked(state.config.bot)),
       botDisplayName: state.botProfile?.username === state.config.bot ? state.botProfile.displayName : '',
-      connectedAccount: Boolean(eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc)),
+      connectedAccount: Boolean(state.config.browserMode ? state.config.bot && webChat.online() : eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc)),
       hasAi: Boolean(state.secrets.aiUrl && state.secrets.aiModel),
       clips: state.clips.map(({ id, name }) => ({ id, name })),
     });
@@ -456,9 +496,9 @@ async function handle(req, res) {
       requireCondition(url && ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password, 'Ungültige KI-URL');
     }
     requireCondition(!config.sendEnabled || (config.creator && config.bot && config.bot.toLowerCase() !== config.creator.toLowerCase()
-      && (eulerLinked(config.bot) || (nextSecrets.sessionId && nextSecrets.targetIdc && nextSecrets.providerKey))), 'Für den Versand ein separates Bot-Konto verbinden');
+      && (config.browserMode || eulerLinked(config.bot) || (nextSecrets.sessionId && nextSecrets.targetIdc && nextSecrets.providerKey))), 'Für den Versand ein separates Bot-Konto verbinden');
     requireCondition(!config.aiEnabled || (config.sendEnabled && nextSecrets.aiUrl && nextSecrets.aiModel), 'Für KI sind Versand, URL und Modell nötig');
-    const reconnect = config.creator !== state.config.creator || config.bot !== state.config.bot ||
+    const reconnect = config.browserMode !== state.config.browserMode || config.creator !== state.config.creator || config.bot !== state.config.bot ||
       config.sendEnabled !== state.config.sendEnabled ||
       ['sessionId', 'targetIdc', 'providerKey'].some((key) => nextSecrets[key] !== state.secrets[key]);
     const paused = config.paused && !state.config.paused;
@@ -540,7 +580,7 @@ const server = createServer((req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; media-src 'self' blob:");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' blob:; media-src 'self' blob:");
   handle(req, res).catch((error) => {
     if (!error.statusCode) log('dashboard', 'Anfrage fehlgeschlagen', error);
     if (!res.headersSent) json(res, { error: error.statusCode ? error.message : 'Interner Fehler. Siehe Fehlerlog.' }, error.statusCode || 500);

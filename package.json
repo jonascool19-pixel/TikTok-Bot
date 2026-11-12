@@ -1,6 +1,6 @@
 {
   "name": "tiktok-bot",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "jsqr": "1.4.0",
+    "playwright": "1.61.1",
     "tiktok-live-api-sdk": "0.4.0-beta1",
     "tiktok-live-connector": "2.5.0"
   }
