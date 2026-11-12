@@ -36,14 +36,13 @@ export function settings(input = {}) {
     speed: numeric(input.speed, 165, 90, 260),
     delay: numeric(input.delay, 30, 5, 180),
     paused: input.paused === true,
-    browserMode: input.browserMode === true,
     sendEnabled: input.sendEnabled === true,
     aiEnabled: input.aiEnabled === true,
     rules, commands,
   };
 }
 
-export const secretFields = ['providerKey', 'sessionId', 'targetIdc', 'aiKey', 'aiUrl', 'aiModel'];
+export const secretFields = ['aiKey', 'aiUrl', 'aiModel'];
 export function secrets(input = {}, previous = {}) {
   return Object.fromEntries(secretFields.map((key) =>
     [key, input[key] === undefined || input[key] === '' ? string(previous[key], 2048) : string(input[key], 2048)]));

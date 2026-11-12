@@ -4,7 +4,7 @@ import { join } from 'node:path';
 const host = 'https://www.tiktok.com';
 const composer = '[data-e2e="live-chat-input-container"] [contenteditable="true"], [data-e2e="live-chat-input-container"] [contenteditable="plaintext-only"], [data-e2e="live-chat-input-container"] textarea';
 const profile = '[data-e2e="profile-icon"] a[href^="/@"], a[data-e2e="profile-icon"][href^="/@"], a[data-e2e="profile-link"][href^="/@"]';
-export function browserChat(directory, { event, status, log }, engine = chromium) {
+export function browserChat(directory, { event, status, log, traffic = () => {} }, engine = chromium) {
   let context, page, creator, timer, opening, working = false, login = false;
   let ready = false, lastSent = 0, lastNavigation = 0;
   let serial = Promise.resolve();
@@ -28,10 +28,16 @@ export function browserChat(directory, { event, status, log }, engine = chromium
     if (page && !page.isClosed()) return;
     if (opening) return opening;
     opening = (async () => {
-      context ??= await engine.launchPersistentContext(join(directory, 'tiktok-browser'), {
-        viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
-      });
-      context.once('close', () => { context = undefined; page = undefined; ready = false; });
+      if (!context) {
+        context = await engine.launchPersistentContext(join(directory, 'tiktok-browser'), {
+          viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
+        });
+        context.once('close', () => { context = undefined; page = undefined; ready = false; });
+        context.on('requestfinished', (request) => {
+          void request.sizes().then(({ requestHeadersSize, requestBodySize, responseHeadersSize, responseBodySize }) =>
+            traffic(requestHeadersSize + requestBodySize, responseHeadersSize + responseBodySize)).catch(() => {});
+        });
+      }
       page = context.pages()[0] ?? await context.newPage();
     })();
     try { await opening; } finally { opening = undefined; }
@@ -78,8 +84,8 @@ export function browserChat(directory, { event, status, log }, engine = chromium
     clearInterval(timer);
     ready = false;
     lastNavigation = 0;
-    creator = config.browserMode ? config.creator : '';
-    if (!config.browserMode) {
+    creator = config.creator;
+    if (!creator && !login) {
       login = false;
       void run(async () => { await context?.close(); context = undefined; page = undefined; }).catch((error) => log('tiktok', 'Browser konnte nicht geschlossen werden', error));
     } else if (creator) {

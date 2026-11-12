@@ -32,6 +32,9 @@ await call('/api/logout', {});
 assert.equal((await call('/api/login', { username: 'admin', password: 'abc123' })).firstLogin, false);
 
 const state = await call('/api/state');
+assert.deepEqual(state.piperVoices, ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low']);
+assert.deepEqual(await call('/api/traffic'), { day: [0, 0], week: [0, 0], total: [0, 0] });
+assert.ok(Number.isFinite(state.resources.used));
 assert.equal(state.config.voice, 'de');
 for (const voice of Object.keys(state.voices)) {
   for (const style of (voice.includes('-') ? ['standard'] : state.styles)) {
@@ -48,7 +51,7 @@ const clip = await call('/api/clip', { name: 'Smoke-Test', mime: 'audio/wav', by
 const config = { ...state.config, voice: 'en', rules: {
   ...state.config.rules, join: { enabled: true, clipId: clip.id, chatTemplate: 'Hallo {name}!' },
 } };
-await call('/api/settings', { config, secrets: { providerKey: 'integration-secret-never-in-log' } });
+await call('/api/settings', { config, secrets: { aiKey: 'integration-secret-never-in-log' } });
 const preview = await call('/api/simulate', { type: 'join', player: true });
 assert.deepEqual(preview.actions, [{ type: 'clip', clipId: clip.id }, { type: 'chat', text: 'Hallo Testgast!' }]);
 assert.equal(preview.audio, sound.audio);

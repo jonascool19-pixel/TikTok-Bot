@@ -4,12 +4,10 @@ import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { dataDir, decryptBackup, encryptBackup, load, passwordHash, passwordMatches, save } from './storage.js';
 import { settings, secrets, string, styles, voices } from './settings.js';
-import { makeTikTok } from './tiktok.js';
 import { naturalVoices, speak } from './audio.js';
 import { getLiveActions } from './live-actions.js';
-import { makeTikTokProfile } from './tiktok-profile.js';
-import { makeEuler } from './euler.js';
 import { browserChat } from './browser-chat.js';
+import { metrics } from './metrics.js';
 
 let state = load();
 if (process.argv.includes('--init')) {
@@ -21,6 +19,12 @@ if (process.argv.includes('--init')) {
   process.exit(0);
 }
 if (!state) throw new Error('Zuerst node src/server.js --init ausführen');
+if (state.connectionVersion !== 1) {
+  const { eulerAccount, botProfile, ...saved } = state;
+  state = { ...saved, connectionVersion: 1, secrets: secrets(state.secrets),
+    config: settings({ ...state.config, bot: state.browserAccount || '', sendEnabled: false, aiEnabled: false }) };
+  save(state);
+}
 
 const logFile = join(dataDir, 'errors.jsonl');
 function log(area, message, error) {
@@ -64,18 +68,12 @@ let loginFailures = 0;
 let loginWindow = 0;
 const maxClipBytes = 2 * 1024 * 1024;
 const clipTypes = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/mp4']);
-const tiktok = makeTikTok({ event: onLiveEvent, status: (value) => { status = value; }, log });
-const webChat = browserChat(dataDir, { event: onLiveEvent, status: (value) => { status = value; }, log });
+const stats = metrics(dataDir, log);
+process.once('SIGTERM', () => { stats.flush(); process.exit(0); });
+const webChat = browserChat(dataDir, { event: onLiveEvent, status: (value) => { status = value; }, log, traffic: stats.add });
 let browserLogin;
-const liveOnline = () => state.config.browserMode ? webChat.online() : tiktok.online();
-const tiktokProfile = makeTikTokProfile();
-const euler = makeEuler();
-let eulerSending = false;
-let eulerLastSend = 0;
+const liveOnline = () => webChat.online();
 
-function eulerLinked(bot) {
-  return euler.enabled && state.eulerAccount?.username.toLowerCase() === bot.toLowerCase();
-}
 
 function persist(next) {
   save(next);
@@ -92,7 +90,6 @@ function reconfigure() {
   cancelAnswers();
   conversations.clear();
   seenJoins.clear();
-  tiktok.configure(state.config.browserMode ? { ...state.config, creator: '' } : state.config, state.secrets);
   webChat.configure(state.config);
 }
 
@@ -133,30 +130,14 @@ async function drainAudio() {
 }
 
 function canSend() {
-  return state.config.sendEnabled && state.config.bot &&
-    (state.config.browserMode || eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc));
+  return state.config.sendEnabled && Boolean(state.browserAccount);
 }
 
 async function send(text, automatic = false) {
   if (!canSend()) throw new Error('Bot-Konto ist nicht für den Versand verbunden');
   if (automatic && Date.now() - lastAutomatic < 12000) return false;
   const message = string(text, 150);
-  if (state.config.browserMode) await webChat.send(message, state.config.bot);
-  else if (eulerLinked(state.config.bot)) {
-    const room = tiktok.room();
-    if (!room || eulerSending || Date.now() - eulerLastSend < 6000) throw new Error('Kein LIVE oder Sendepause aktiv');
-    const account = state.eulerAccount;
-    eulerSending = true;
-    eulerLastSend = Date.now();
-    try {
-      await euler.send(room, message, decryptBackup(account.vault, euler.key), (token) => {
-        if (state.eulerAccount !== account || !state.config.sendEnabled || !eulerLinked(state.config.bot) || tiktok.room() !== room) {
-          throw new Error('Bot-Verbindung wurde geändert');
-        }
-        persist({ ...state, eulerAccount: { ...account, vault: encryptBackup(token, euler.key) } });
-      });
-    } finally { eulerSending = false; }
-  } else await tiktok.send(message);
+  await webChat.send(message, state.browserAccount);
   lastAutomatic = Date.now();
   return true;
 }
@@ -284,7 +265,6 @@ function validPassword(value, minimum) {
   return typeof value === 'string' && value.length >= minimum && value.length <= 200;
 }
 
-const activeSession = (session) => (sessions.get(session) ?? 0) > Date.now();
 
 function readLogs() {
   return ['.1', ''].flatMap((suffix) => {
@@ -311,7 +291,7 @@ function restore(input) {
   const clips = restored.clips.map(validateClip);
   requireCondition(clips.every(({ id }) => /^[0-9a-f-]{36}$/.test(id)), 'Ungültige Aufnahme im Backup');
   persist({ ...state, config: { ...settings(restored.config), sendEnabled: false, aiEnabled: false },
-    secrets: restored.secrets ? secrets(restored.secrets) : secrets(), clips, eulerAccount: undefined });
+    secrets: restored.secrets ? secrets(restored.secrets) : secrets(), clips, browserAccount: undefined });
   clearAudio();
   reconfigure();
 }
@@ -319,8 +299,6 @@ function restore(input) {
 const assets = {
   '/': ['index.html', 'text/html'],
   '/app.js': ['app.js', 'text/javascript'],
-  '/qr.js': ['qr.js', 'text/javascript'],
-  '/jsqr.js': ['../node_modules/jsqr/dist/jsQR.js', 'text/javascript'],
   '/style.css': ['style.css', 'text/css'],
   '/player': ['player.html', 'text/html'],
   '/player.js': ['player.js', 'text/javascript'],
@@ -331,45 +309,6 @@ async function handle(req, res) {
   const path = url.pathname;
   const method = req.method;
   if (method === 'GET' && path === '/health') return json(res, { ready: true, service: 'tiktok-bot' });
-  if (method === 'GET' && path === '/api/tiktok/euler/callback') {
-    const browser = req.headers.cookie?.match(/(?:^|;\s*)ttb_euler=([A-Za-z0-9_-]{43})(?:;|$)/)?.[1];
-    if (!browser) throw new RequestError(403, 'Starte die Anmeldung im Dashboard.');
-    let result = 'connected';
-    try {
-      const { username, displayName, token } = await euler.complete(url.searchParams, browser, activeSession);
-      if (username.toLowerCase() === state.config.creator.toLowerCase()) throw new Error('Creator-Konto statt Bot-Konto');
-      const config = { ...state.config, bot: username, sendEnabled: Boolean(state.config.creator), aiEnabled: false };
-      persist({ ...state, config, secrets: { ...state.secrets, sessionId: '', targetIdc: '' },
-        botProfile: { username, displayName }, eulerAccount: { username, vault: encryptBackup(token, euler.key) } });
-      reconfigure();
-    } catch (error) { result = 'failed'; log('tiktok', 'QR-Verbindung fehlgeschlagen', error); }
-    res.writeHead(303, { Location: '/?euler=' + result + '#konto',
-      'Set-Cookie': 'ttb_euler=; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/euler/callback; Max-Age=0' });
-    return res.end();
-  }
-  if (method === 'GET' && path === '/api/tiktok/profile/callback') {
-    const browser = req.headers.cookie?.match(/(?:^|;\s*)ttb_tiktok=([A-Za-z0-9_-]{43})(?:;|$)/)?.[1];
-    if (!browser) throw new RequestError(403, 'Starte die Anmeldung im Dashboard.');
-    let result = 'connected';
-    try {
-      const { username, displayName } = await tiktokProfile.complete(url.searchParams, browser, activeSession);
-      if (username.toLowerCase() === state.config.creator.toLowerCase()) throw new Error('Creator-Konto statt Bot-Konto');
-      const changed = username.toLowerCase() !== state.config.bot.toLowerCase();
-      const config = { ...state.config, bot: username };
-      const updatedSecrets = { ...state.secrets };
-      if (changed) {
-        config.sendEnabled = false;
-        config.aiEnabled = false;
-        updatedSecrets.sessionId = '';
-        updatedSecrets.targetIdc = '';
-      }
-      persist({ ...state, config, secrets: updatedSecrets, botProfile: { username, displayName } });
-      if (changed) reconfigure();
-    } catch (error) { result = 'failed'; log('tiktok', 'Profilfreigabe fehlgeschlagen', error); }
-    res.writeHead(303, { Location: '/?tiktok=' + result + '#konto',
-      'Set-Cookie': 'ttb_tiktok=; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/profile/callback; Max-Age=0' });
-    return res.end();
-  }
   if (method === 'GET' && Object.hasOwn(assets, path)) {
     const [file, mime] = assets[path];
     res.writeHead(200, { 'Content-Type': mime + '; charset=utf-8' });
@@ -412,8 +351,8 @@ async function handle(req, res) {
     throw new RequestError(403, 'Zuerst Startpasswort ändern');
   }
   if (path.startsWith('/api/browser/')) {
-    if (!state.config.browserMode || process.env.BOT_SECURE_COOKIE !== '1') {
-      throw new RequestError(403, 'Aktiviere zuerst den Browsermodus und HTTPS.');
+    if (process.env.BOT_SECURE_COOKIE !== '1') {
+      throw new RequestError(403, 'Öffne das Dashboard über HTTPS.');
     }
     if (method === 'GET' && path === '/api/browser/image') {
       if (browserLogin !== session) throw new RequestError(403, 'Starte zuerst die Browser-Anmeldung.');
@@ -438,36 +377,22 @@ async function handle(req, res) {
       const bot = await webChat.finish();
       if (!bot || bot.toLowerCase() === state.config.creator.toLowerCase()) throw new RequestError(400, 'Separates Bot-Profil konnte nicht erkannt werden.');
       browserLogin = undefined;
-      persist({ ...state, config: { ...state.config, bot, sendEnabled: false, aiEnabled: false } });
+      persist({ ...state, browserAccount: bot, config: { ...state.config, bot, sendEnabled: false, aiEnabled: false } });
       reconfigure();
     } else throw new RequestError(404, 'Seite nicht gefunden');
     return json(res, { ok: true });
   }
-  if (method === 'POST' && path === '/api/tiktok/profile/start') {
-    if (!tiktokProfile.enabled) throw new RequestError(503, 'TikTok Login Kit ist noch nicht eingerichtet.');
-    const { url, browser } = tiktokProfile.start(session);
-    res.setHeader('Set-Cookie', 'ttb_tiktok=' + browser + '; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/profile/callback; Max-Age=300');
-    return json(res, { url });
-  }
-  if (method === 'POST' && path === '/api/tiktok/euler/start') {
-    if (!euler.enabled) throw new RequestError(503, 'Euler Stream ist noch nicht eingerichtet.');
-    const { url, browser } = euler.start(session);
-    res.setHeader('Set-Cookie', 'ttb_euler=' + browser + '; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/euler/callback; Max-Age=300');
-    return json(res, { url });
-  }
   if (method === 'GET' && path === '/api/state') {
     return json(res, {
       config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: liveOnline(),
-      profileLogin: tiktokProfile.enabled,
-      eulerLogin: euler.enabled,
-      eulerLinked: Boolean(eulerLinked(state.config.bot)),
-      botDisplayName: state.botProfile?.username === state.config.bot ? state.botProfile.displayName : '',
-      connectedAccount: Boolean(state.config.browserMode ? state.config.bot && webChat.online() : eulerLinked(state.config.bot) || (state.secrets.sessionId && state.secrets.targetIdc)),
+      piperVoices: Object.keys(naturalVoices), resources: stats.resources(),
+      connectedAccount: Boolean(state.browserAccount),
       hasAi: Boolean(state.secrets.aiUrl && state.secrets.aiModel),
       clips: state.clips.map(({ id, name }) => ({ id, name })),
     });
   }
   if (method === 'GET' && path === '/api/log') return json(res, readLogs());
+  if (method === 'GET' && path === '/api/traffic') return json(res, stats.traffic());
   if (method === 'GET' && path === '/api/audio') {
     lastPlayerPoll = Date.now();
     const cutoff = Date.now() - 12000;
@@ -485,24 +410,18 @@ async function handle(req, res) {
     const input = await body(req);
     const config = settings(input.config);
     const nextSecrets = secrets(input.secrets, state.secrets);
-    if (input.disconnect === true) { nextSecrets.sessionId = ''; nextSecrets.targetIdc = ''; config.sendEnabled = false; }
-    const botChanged = config.bot.toLowerCase() !== state.config.bot.toLowerCase();
-    if (botChanged && state.secrets.sessionId && !input.disconnect && nextSecrets.sessionId === state.secrets.sessionId) {
-      throw new RequestError(400, 'Hinterlege beim Wechsel des Bot-Kontos dessen neue Websitzung oder entferne zuerst die alte Sitzung.');
-    }
+    config.bot = input.disconnect === true ? '' : state.browserAccount || '';
+    if (input.disconnect === true) { config.sendEnabled = false; config.aiEnabled = false; }
     if (nextSecrets.aiUrl) {
       let url;
       try { url = new URL(nextSecrets.aiUrl); } catch {}
       requireCondition(url && ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password, 'Ungültige KI-URL');
     }
-    requireCondition(!config.sendEnabled || (config.creator && config.bot && config.bot.toLowerCase() !== config.creator.toLowerCase()
-      && (config.browserMode || eulerLinked(config.bot) || (nextSecrets.sessionId && nextSecrets.targetIdc && nextSecrets.providerKey))), 'Für den Versand ein separates Bot-Konto verbinden');
+    requireCondition(!config.sendEnabled || (config.creator && config.bot && config.bot.toLowerCase() !== config.creator.toLowerCase()), 'Verbinde zuerst ein separates Bot-Konto.');
     requireCondition(!config.aiEnabled || (config.sendEnabled && nextSecrets.aiUrl && nextSecrets.aiModel), 'Für KI sind Versand, URL und Modell nötig');
-    const reconnect = config.browserMode !== state.config.browserMode || config.creator !== state.config.creator || config.bot !== state.config.bot ||
-      config.sendEnabled !== state.config.sendEnabled ||
-      ['sessionId', 'targetIdc', 'providerKey'].some((key) => nextSecrets[key] !== state.secrets[key]);
+    const reconnect = input.disconnect === true || config.creator !== state.config.creator;
     const paused = config.paused && !state.config.paused;
-    persist({ ...state, config, secrets: nextSecrets, eulerAccount: input.disconnect === true ? undefined : state.eulerAccount });
+    persist({ ...state, config, secrets: nextSecrets, browserAccount: input.disconnect === true ? undefined : state.browserAccount });
     if (paused) clearAudio();
     if (reconnect) reconfigure();
     else if (paused || !config.aiEnabled) cancelAnswers();

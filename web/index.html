@@ -2,21 +2,20 @@
 <html lang="de">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TikTok-Bot</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
 <body><main>
-<header><div><h1>TikTok-Bot</h1><p id="status" aria-live="polite">Dashboard im Heimnetz</p></div><button id="logout" hidden>Abmelden</button></header>
+<header><div><h1>TikTok-Bot</h1><p id="status" aria-live="polite">Dashboard im Heimnetz</p></div><div id="resources" hidden><span id="cpu"></span><span id="ram"></span></div><button id="logout" hidden>Abmelden</button></header>
 <p id="notice" role="status" hidden></p>
 <section id="login" hidden><h2>Anmelden</h2><form id="login-form"><label>Benutzer<input name="username" value="admin" autocomplete="username" required></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button>Anmelden</button></form></section>
 <section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort (mindestens 6 Zeichen)<input name="password" type="password" minlength="6" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
 <div id="dashboard" hidden>
-<nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#einstellungen">Einstellungen</a><a href="#fehler">Fehlerlog</a></nav>
+<nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#datenverbrauch">Datenverbrauch</a><a href="#fehler">Fehlerlog</a><a href="#einstellungen">Einstellungen</a></nav>
 <form id="settings">
 <section id="konto"><h2>Deinen LIVE mitlesen</h2>
 <p>Trage den @Namen ein, mit dem du streamst, und speichere. Sobald dein öffentlicher LIVE läuft, versucht der Bot, sich zu verbinden.</p>
 <label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label>
-<label class="check"><input name="browserMode" type="checkbox"> Lokalen TikTok-Browser verwenden (Vorschau)</label>
 <div id="browser-setup" hidden>
-<p>Speichere den Browsermodus und öffne das Dashboard über HTTPS. Melde dich danach im Browser des CT mit dem separaten Bot-Konto an.</p>
+<p>Öffne das Dashboard über HTTPS und melde dich hier mit dem separaten Bot-Konto an.</p>
 <label>Admin-Passwort<input id="browser-password" type="password" autocomplete="current-password"></label>
-<button type="button" id="browser-start">TikTok-Anmeldung öffnen</button>
+<button type="button" id="browser-start">Bot-Konto verbinden</button>
 <div id="browser-controls" hidden>
 <img id="browser-image" width="1000" height="720" alt="TikTok-Anmeldung im CT">
 <label>Texteingabe für das ausgewählte Feld<input id="browser-text" type="password" autocomplete="off" maxlength="300"></label>
@@ -27,36 +26,12 @@
 </div></div>
 <h2>Mit dem Bot-Konto im Chat schreiben</h2>
 <p id="account-status" aria-live="polite"></p>
-<div class="actions"><button type="button" id="tiktok-euler">Bot-Konto verbinden</button><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>
-<details id="tiktok-euler-help"><summary>Einmalige Einrichtung für Chatversand</summary>
-<p>Die Freigabe öffnet sich bei Euler Stream. Nach deiner Bestätigung übernimmt der Bot den Kontonamen und speichert die Verbindung.</p>
-<ol><li id="euler-https-status">HTTPS wird geprüft.</li><li><a href="https://www.eulerstream.com/register" target="_blank" rel="noopener noreferrer">Erstelle ein separates Euler-Stream-Konto</a> oder melde dich dort mit deinem bestehenden Konto an. Erstelle im Euler-Stream-Dashboard unter „OAuth“ einen Client mit den Berechtigungen <code>user:info</code> und <code>webcast:chat</code>.</li>
-<li>Registriere die HTTPS-Adresse des Dashboards mit dem Pfad <code>/api/tiktok/euler/callback</code>.</li>
-<li>Ergänze als root im CT die folgenden Werte in <code>/etc/tiktok-bot.env</code>. Erzeuge den Schlüssel mit <code>openssl rand -hex 32</code> und starte den Bot-Dienst neu.</li></ol>
-<pre>BOT_SECURE_COOKIE=1
-BOT_EULER_CLIENT_ID=DEINE_CLIENT_ID
-BOT_EULER_CLIENT_SECRET=DEIN_CLIENT_SECRET
-BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
-BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
-<details id="manual-session"><summary>Versandzugang am PC einrichten oder ändern</summary>
-<p>Melde dich bei TikTok mit dem Bot-Konto an. Erstelle im Dashboard deines <a href="https://www.eulerstream.com/register" target="_blank" rel="noopener noreferrer">Euler-Stream-Kontos</a> einen API-Schlüssel mit Sendefreigabe. Beim Senden erhält Euler Stream die Sitzungsdaten.</p>
-<div class="grid"><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
-<label>Euler-Stream-Schlüssel<input name="providerKey" type="password" autocomplete="off" placeholder="Leer lassen, um den Wert zu behalten"></label>
-<label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
-<label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
-</details>
-<label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
-<p><a href="#antworten">Zum Chat und zur Testnachricht</a></p>
-<details id="qr-browser"><summary>QR-Code am PC öffnen</summary>
-<p>Lass die Euler-Anmeldung geöffnet. Speichere einen Screenshot des QR-Codes und wähle ihn hier aus. Das Bild wird nur in deinem Browser gelesen.</p>
-<label>Screenshot mit QR-Code<input id="qr-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
-<p id="qr-status" role="status"></p><a id="qr-link" target="_blank" rel="noopener noreferrer" hidden>TikTok-QR-Link im Browser öffnen</a>
-</details></section>
+<label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></section>
 <section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
-<label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
+<label>Stimme<select name="voice"></select></label><label>Stimmeffekt (eSpeak)<select name="style"></select></label>
 <label>Lautstärke (%)<input name="volume" type="number" min="0" max="100" required></label>
 <label>Tempo (Wörter/min)<input name="speed" type="number" min="90" max="260" required></label></div>
-<label class="check"><input name="paused" type="checkbox"> Automatische Aktionen pausieren</label>
+<p id="voice-status"></p><label class="check"><input name="paused" type="checkbox"> Automatische Aktionen pausieren</label>
 <p><a href="/player" target="_blank" rel="noopener">Wiedergabeseite öffnen</a> und dort die Ausgabe aktivieren.</p><button type="button" id="clear-audio" class="secondary">Audiowarteschlange leeren</button>
 </section>
 <section id="ereignisse"><h2>Ereignisse</h2><p>Platzhalter für Texte: {name}, {text}, {gift} und {count}.</p><div id="rules" class="grid"></div></section>
@@ -82,5 +57,6 @@ BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
 <label class="check"><input name="includeSecrets" type="checkbox"> Zugangsdaten in die verschlüsselte Datei aufnehmen</label>
 <button name="mode" value="export">Backup herunterladen</button>
 <label>Datei zur Wiederherstellung<input name="file" type="file" accept=".ttb"></label><button name="mode" value="import" class="secondary">Backup wiederherstellen</button></form></section>
-<section id="fehler"><h2>Fehlerlog</h2><div class="actions"><button id="logs">Aktualisieren</button><button id="download-log" class="secondary">Log herunterladen</button></div><pre id="log-content">Noch nicht geladen.</pre></section>
+<section id="datenverbrauch"><h2>Datenverbrauch</h2><p>Gemessener HTTP-Verkehr des TikTok-Browsers. Die Zeiträume werden stundenweise berechnet. WebSocket- und sonstiger CT-Verkehr sind nicht enthalten.</p><table><thead><tr><th>Zeitraum</th><th>Gesendet</th><th>Empfangen</th></tr></thead><tbody id="traffic-rows"></tbody></table></section>
+<section id="fehler"><h2>Fehlerlog</h2><p>Aktualisiert sich alle zehn Sekunden, solange der Reiter geöffnet ist.</p><div class="actions"><button id="logs">Aktualisieren</button><button id="download-log" class="secondary">Log herunterladen</button></div><pre id="log-content">Noch nicht geladen.</pre></section>
 </div></main></body></html>

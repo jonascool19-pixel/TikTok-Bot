@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const form = $('#settings');
 const titles = { comment: 'Kommentare', gift: 'Geschenke', join: 'Begrüßungen' };
-const secretNames = ['providerKey', 'sessionId', 'targetIdc', 'aiUrl', 'aiModel', 'aiKey'];
+const secretNames = ['aiUrl', 'aiModel', 'aiKey'];
 let state;
 let logEntries = [];
 let previewUrl;
@@ -39,6 +39,7 @@ function click(selector, work) { $(selector).addEventListener('click', perform(w
 function show(view) {
   for (const key of ['login', 'password', 'dashboard']) $('#' + key).hidden = key !== view;
   $('#logout').hidden = view === 'login';
+  if (view !== 'dashboard') $('#resources').hidden = true;
   if (view === 'dashboard') showPage();
 }
 
@@ -57,6 +58,7 @@ function showPage() {
     if (link.hash === '#' + selected) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  void refreshStatsPage();
 }
 
 navigation.addEventListener('click', (event) => {
@@ -115,17 +117,15 @@ function render() {
 }
 
 function status() {
-  $('#browser-setup').hidden = !state.config.browserMode;
+  $('#browser-setup').hidden = false;
+  const { cpu, used, limit } = state.resources ?? {};
+  $('#resources').hidden = false;
+  $('#cpu').textContent = 'CPU ' + (cpu == null ? '—' : cpu + ' %');
+  $('#ram').textContent = 'RAM ' + (used == null ? '—' : formatBytes(used) + (limit ? ' / ' + formatBytes(limit) : ''));
+  $('#voice-status').textContent = state.piperVoices?.length
+    ? 'Thorsten, Kerstin und Amy findest du unter Stimme.'
+    : 'Piper ist nicht verfügbar. Prüfe die Installation der Stimmen.';
   $('#status').textContent = state.status;
-  const profileAvailable = state.profileLogin && location.protocol === 'https:';
-  $('#tiktok-profile').hidden = !profileAvailable;
-  const https = location.protocol === 'https:';
-  const qrAvailable = state.eulerLogin && https;
-  $('#euler-https-status').textContent = https
-    ? 'HTTPS erkannt. Du kannst mit dem Euler-Stream-Konto weitermachen.'
-    : 'HTTPS fehlt. Diese Seite wurde über HTTP geöffnet. Öffne die HTTPS-Adresse deines Dashboards, sobald sie eingerichtet ist.';
-  $('#tiktok-euler-help').hidden = qrAvailable;
-  $('#tiktok-euler').textContent = state.eulerLinked ? 'Bot-Konto erneut verbinden' : 'Bot-Konto verbinden';
   $('#disconnect').hidden = !state.connectedAccount;
   $('#send button').disabled = !state.online || !state.config.sendEnabled || !state.connectedAccount;
   $('#send-status').textContent = !state.connectedAccount ? 'Richte zuerst den Versandzugang unter TikTok-Verbindung ein.'
@@ -134,10 +134,13 @@ function status() {
   const bot = state.config.bot ? '@' + state.config.bot : '';
   $('#account-status').textContent = state.connectedAccount
     ? bot + (state.config.sendEnabled ? ' · Versand eingerichtet. Teste ihn im LIVE.' : ' · Konto hinterlegt. Versand ist ausgeschaltet.')
-    : qrAvailable ? 'Verbinde jetzt dein separates Bot-Konto.'
-      : !https ? 'Für die automatische Verbindung fehlt die HTTPS-Adresse.'
-        : 'Für die automatische Verbindung fehlt die Euler-Stream-Einrichtung.';
+    : 'Melde dich mit deinem separaten Bot-Konto an.';
 }
+
+function updateVoiceEffect() {
+  form.elements.style.disabled = state.piperVoices?.includes(form.elements.voice.value) ?? false;
+}
+form.elements.voice.addEventListener('change', updateVoiceEffect);
 async function load() {
   try { state = await api('state'); }
   catch (error) {
@@ -149,11 +152,12 @@ async function load() {
   if (state.firstLogin) return show('password');
   show('dashboard');
   render();
+  updateVoiceEffect();
 }
 
 function config() {
   const result = {};
-  for (const key of ['creator', 'bot', 'voice', 'style', 'paused', 'sendEnabled', 'aiEnabled', 'volume', 'speed', 'delay', 'browserMode']) {
+  for (const key of ['creator', 'voice', 'style', 'paused', 'sendEnabled', 'aiEnabled', 'volume', 'speed', 'delay']) {
     const field = form.elements[key];
     result[key] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? field.valueAsNumber : field.value;
   }
@@ -252,48 +256,6 @@ click('#browser-finish', async () => {
   notice('Bot-Konto übernommen. Aktiviere den Versand und speichere.');
 });
 click('#browser-cancel', async () => { stopBrowserView(); await api('browser/cancel', {}); });
-click('#tiktok-profile', async () => {
-  const { url } = await api('tiktok/profile/start', {});
-  window.location.assign(url);
-});
-click('#tiktok-euler', async () => {
-  if (!state.eulerLogin || location.protocol !== 'https:') {
-    const help = $('#tiktok-euler-help');
-    help.open = true;
-    help.querySelector('summary').focus();
-    return;
-  }
-  const tab = window.open('about:blank', '_blank');
-  if (!tab) throw new Error('Erlaube Pop-ups für das Dashboard und versuche es erneut.');
-  tab.opener = null;
-  try {
-    const { url } = await api('tiktok/euler/start', {});
-    tab.location.replace(url);
-    $('#qr-browser').open = true;
-  } catch (error) {
-    tab.close();
-    throw error;
-  }
-});
-$('#qr-image').addEventListener('change', async (event) => {
-  const field = event.target;
-  const file = field.files[0];
-  field.value = '';
-  const link = $('#qr-link');
-  link.hidden = true;
-  link.removeAttribute('href');
-  const status = $('#qr-status');
-  status.textContent = '';
-  if (!file) return;
-  field.disabled = true;
-  try {
-    const { decodeTikTokQr } = await import('/qr.js');
-    link.href = await decodeTikTokQr(file);
-    link.hidden = false;
-    status.textContent = 'TikTok-Link erkannt. Ob die Freigabe am PC möglich ist, zeigt TikTok nach dem Öffnen.';
-  } catch (error) { status.textContent = error.message; }
-  finally { field.disabled = false; }
-});
 submit('#settings', async () => {
   await api('settings', { config: config(), secrets: secretInput() });
   await load();
@@ -380,11 +342,31 @@ submit('#backup-form', async (event) => {
   }
   event.target.reset();
 });
-click('#logs', async () => {
+async function refreshLogs() {
   logEntries = await api('log');
   $('#log-content').textContent = logEntries.map(({ time, area, message, type, code }) =>
     new Date(time).toLocaleString() + ' · ' + area + ' · ' + message + ' (' + type + (code ? ', ' + code : '') + ')').join('\n') || 'Keine Fehler aufgezeichnet.';
-});
+}
+click('#logs', refreshLogs);
+function formatBytes(bytes) {
+  const gigabytes = bytes >= 1e9;
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(bytes / (gigabytes ? 1e9 : 1e6)) + (gigabytes ? ' GB' : ' MB');
+}
+async function refreshStatsPage() {
+  if (document.hidden || $('#dashboard').hidden) return;
+  try {
+    if (!$('#fehler').hidden) await refreshLogs();
+    if (!$('#datenverbrauch').hidden) {
+      const traffic = await api('traffic');
+      $('#traffic-rows').replaceChildren(...[['day', 'Letzte 24 Stunden'], ['week', 'Letzte 7 Tage'], ['total', 'Insgesamt']].map(([key, title]) => {
+        const row = document.createElement('tr');
+        for (const value of [title, ...traffic[key].map(formatBytes)]) row.insertCell().textContent = value;
+        return row;
+      }));
+    }
+  } catch (error) { notice(error.message, true); }
+}
+setInterval(refreshStatsPage, 10000);
 click('#download-log', async () => {
   logEntries = await api('log');
   download(logEntries.map((entry) => JSON.stringify(entry)).join('\n'), 'application/jsonl', 'tiktok-bot-fehler.jsonl');
@@ -395,16 +377,3 @@ setInterval(async () => {
   catch (error) { $('#status').textContent = error.message; }
 }, 5000);
 await load().catch((error) => notice(error.message, true));
-const tiktokResult = new URLSearchParams(window.location.search).get('tiktok');
-const eulerResult = new URLSearchParams(window.location.search).get('euler');
-if (eulerResult) {
-  history.replaceState(null, '', '/#konto');
-  showPage();
-  notice(eulerResult === 'connected' ? 'Bot-Konto für den LIVE-Chat verbunden.' : 'QR-Anmeldung fehlgeschlagen. Prüfe das Fehlerlog.', eulerResult !== 'connected');
-}
-if (tiktokResult) {
-  history.replaceState(null, '', '/#konto');
-  showPage();
-  notice(tiktokResult === 'connected' ? 'TikTok-Profil übernommen.' : 'TikTok-Profil konnte nicht übernommen werden. Prüfe das Fehlerlog.',
-    tiktokResult !== 'connected');
-}
