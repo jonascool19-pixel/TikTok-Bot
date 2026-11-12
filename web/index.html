@@ -46,6 +46,10 @@
 <button id="record" type="button" class="secondary">Mikrofonaufnahme starten</button><p>Mikrofonzugriff benötigt HTTPS oder localhost. Über HTTP kannst du eine fertige Audiodatei hochladen.</p><ul id="clips"></ul></section>
 <section><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
 <section id="postfach"><h2>Bot-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
+<details><summary>Neues Bot-Postfach einrichten</summary><ol>
+<li><a href="https://accounts.google.com/signup" target="_blank" rel="noreferrer">Separates Gmail-Konto bei Google erstellen</a>. Wähle dort deinen Bot-Namen und bestätige die Registrierung.</li>
+<li>Hinterlege die neue Gmail-Adresse in der CT-Konfiguration und richte den Google-Zugriff ein. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Einrichtungsanleitung öffnen</a>.</li>
+<li>Kehre hierher zurück und wähle <strong>Mit Google verbinden</strong>.</li></ol></details>
 <form id="mail-form" hidden><label>Admin-Passwort erneut eingeben<input type="password" name="password" autocomplete="current-password" required></label>
 <div class="actions"><button value="start" id="mail-connect">Mit Google verbinden</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
 <div id="mail-inbox" hidden><div class="actions"><button id="mail-refresh" class="secondary">Nachrichten neu laden</button><button id="mail-lock" class="secondary">Postfach sperren</button></div>
