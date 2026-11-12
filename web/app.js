@@ -6,6 +6,8 @@ let state;
 let logEntries = [];
 let previewUrl;
 let recording;
+let mailTimer;
+let mailRevision = 0;
 
 async function api(path, data) {
   const options = data === undefined ? {} : {
@@ -39,6 +41,7 @@ function click(selector, work) { $(selector).addEventListener('click', perform(w
 function show(view) {
   for (const key of ['login', 'password', 'dashboard']) $('#' + key).hidden = key !== view;
   $('#logout').hidden = view === 'login';
+  if (view !== 'dashboard') clearMail();
 }
 
 function option(value, label) { return new Option(label, value); }
@@ -99,6 +102,55 @@ async function load() {
   if (state.firstLogin) return show('password');
   show('dashboard');
   render();
+  await mailStatus().catch(() => { $('#mail-status').textContent = 'Postfachstatus konnte nicht geladen werden.'; });
+}
+
+function clearMail() {
+  clearTimeout(mailTimer);
+  mailRevision++;
+  $('#mail-inbox').hidden = true;
+  $('#mail-list').replaceChildren();
+  $('#mail-empty').hidden = true;
+  $('#mail-message').textContent = '';
+  $('#mail-message').hidden = true;
+  $('#mail-form').reset();
+}
+
+async function mailStatus() {
+  const mail = await api('gmail/status');
+  const secure = window.isSecureContext && window.location.protocol === 'https:';
+  $('#mail-form').hidden = !mail.enabled || !secure;
+  $('#mail-connect').hidden = mail.connected;
+  $('#mail-unlock').hidden = !mail.connected;
+  $('#mail-disconnect').hidden = !mail.connected && !mail.unreadable;
+  $('#mail-status').textContent = !mail.enabled
+    ? 'Gmail ist noch nicht eingerichtet. Die Anleitung steht im GitHub-Repository.'
+    : !secure ? 'Das Bot-Postfach benötigt die HTTPS-Adresse des Dashboards.'
+      : mail.address + (mail.connected ? ' · Verbunden. Angezeigt werden Nachrichten aus dem Bot-Label.'
+        : mail.unreadable ? ' · Verbindung konnte nicht entschlüsselt werden.' : ' · Noch nicht verbunden.');
+}
+
+async function loadMail() {
+  const revision = mailRevision;
+  const list = await api('gmail/messages', {});
+  if (revision !== mailRevision) return;
+  $('#mail-empty').hidden = list.messages.length !== 0;
+  $('#mail-list').replaceChildren(...list.messages.map(({ id, received }) => {
+    const item = document.createElement('li');
+    const open = document.createElement('button');
+    open.className = 'secondary';
+    open.textContent = 'Nachricht vom ' + new Date(received).toLocaleString();
+    open.addEventListener('click', perform(async () => {
+      $('#mail-message').textContent = '';
+      $('#mail-message').hidden = true;
+      const message = await api('gmail/message', { id });
+      if (revision !== mailRevision) return;
+      $('#mail-message').textContent = message.text;
+      $('#mail-message').hidden = false;
+    }, open));
+    item.append(open);
+    return item;
+  }));
 }
 
 function config() {
@@ -152,6 +204,35 @@ submit('#password-form', async (event) => {
 });
 click('#logout', async () => { await api('logout', {}); await load(); notice(''); });
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
+submit('#mail-form', async (event) => {
+  const button = event.submitter;
+  if (!button) return;
+  const password = event.target.elements.password.value;
+  event.target.reset();
+  if (button.value === 'start') {
+    const { url } = await api('gmail/start', { password });
+    window.location.assign(url);
+  } else if (button.value === 'disconnect') {
+    const { revoked } = await api('gmail/disconnect', { password });
+    clearMail();
+    await mailStatus();
+    notice(revoked ? 'Gmail-Verbindung getrennt.' : 'Verbindung lokal entfernt. Entziehe den Zugriff zusätzlich im Google-Konto.');
+  } else {
+    clearMail();
+    await api('gmail/unlock', { password });
+    $('#mail-inbox').hidden = false;
+    mailTimer = setTimeout(clearMail, 115000);
+    await loadMail();
+  }
+});
+click('#mail-refresh', loadMail);
+click('#mail-lock', async () => { clearMail(); await api('gmail/lock', {}); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !$('#mail-inbox').hidden) {
+    clearMail();
+    void api('gmail/lock', {}).catch(() => {});
+  }
+});
 submit('#settings', async () => {
   await api('settings', { config: config(), secrets: secretInput() });
   await load();
@@ -253,3 +334,9 @@ setInterval(async () => {
   catch (error) { $('#status').textContent = error.message; }
 }, 5000);
 await load().catch((error) => notice(error.message, true));
+const mailResult = new URLSearchParams(window.location.search).get('gmail');
+if (mailResult) {
+  history.replaceState(null, '', '/#postfach');
+  notice(mailResult === 'connected' ? 'Gmail-Postfach verbunden.' : 'Google-Verbindung fehlgeschlagen. Prüfe Einrichtung und Fehlerlog.',
+    mailResult !== 'connected');
+}
