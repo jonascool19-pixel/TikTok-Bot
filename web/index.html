@@ -20,7 +20,7 @@
 <label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
 <label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
 <p id="account-status"></p><div class="actions"><button type="button" id="tiktok-profile" hidden>Mit TikTok anmelden und Bot-Namen übernehmen</button>
-<a id="tiktok-profile-help" href="https://github.com/jonascool19-pixel/TikTok-Bot#tiktok-profilname-per-login-kit" target="_blank" rel="noreferrer">Automatische Namensübernahme einrichten</a>
+<details id="tiktok-profile-help"><summary>Automatische Namensübernahme einrichten</summary><ol><li>Öffne das Dashboard über HTTPS.</li><li>Aktiviere Login Kit in deiner TikTok-Developer-App mit den Berechtigungen <code>user.info.basic</code> und <code>user.info.profile</code>. Registriere die HTTPS-Adresse dieses Dashboards mit dem Pfad <code>/api/tiktok/profile/callback</code>.</li><li>Trage <code>BOT_SECURE_COOKIE=1</code>, <code>BOT_TIKTOK_CLIENT_KEY</code>, <code>BOT_TIKTOK_CLIENT_SECRET</code> und <code>BOT_TIKTOK_REDIRECT_URI</code> in <code>/etc/tiktok-bot.env</code> ein und starte den Dienst neu.</li><li>Klicke hier auf „Mit TikTok anmelden und Bot-Namen übernehmen“.</li></ol></details>
 <button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div></section>
 <section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
 <label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
