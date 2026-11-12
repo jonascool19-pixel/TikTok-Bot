@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TikTok-Bot</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body><main>
+<header><div><h1>TikTok-Bot</h1><p id="status" aria-live="polite">Dashboard im Heimnetz</p></div><button id="logout" hidden>Abmelden</button></header>
+<p id="notice" role="status" hidden></p>
+<section id="login" hidden><h2>Anmelden</h2><form id="login-form"><label>Benutzer<input name="username" value="admin" autocomplete="username" required></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button>Anmelden</button></form></section>
+<section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
+<div id="dashboard" hidden>
+<nav aria-label="Bereiche"><a href="#konto">TikTok</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#backup">Backup</a><a href="#fehler">Fehlerlog</a></nav>
+<form id="settings">
+<section id="konto"><h2>TikTok verbinden</h2><ol>
+<li>Trage deinen Creator-Namen ein und speichere. Der Bot verbindet sich, sobald dein öffentlicher LIVE läuft.</li>
+<li><a href="https://www.tiktok.com/signup" target="_blank" rel="noreferrer">Erstelle bei TikTok ein separates Bot-Konto</a>. Vergib dort den Namen, den Zuschauer im Chat sehen sollen.</li>
+<li>Zum Schreiben brauchst du eine aktive Sitzung dieses Kontos und einen Euler-Stream-Zugang mit Freigabe für Chatversand. Richte die Sitzung gemäß der <a href="https://ttlc.docs.isaackogan.com/configuration/authentication/" target="_blank" rel="noreferrer">Connector-Dokumentation</a> ein. Beim Versand erhält der Anbieter die Bot-Sitzungsdaten.</li>
+</ol>
+<div class="grid"><label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
+<label>Euler-Stream-Schlüssel<input name="providerKey" type="password" autocomplete="off" placeholder="Leer lassen, um den Wert zu behalten"></label>
+<label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
+<label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
+<label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
+<p id="account-status"></p><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></section>
+<section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
+<label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
+<label>Lautstärke (%)<input name="volume" type="number" min="0" max="100" required></label>
+<label>Tempo (Wörter/min)<input name="speed" type="number" min="90" max="260" required></label></div>
+<label class="check"><input name="paused" type="checkbox"> Automatische Aktionen pausieren</label>
+<p><a href="/player" target="_blank" rel="noopener">Wiedergabeseite öffnen</a> und dort die Ausgabe aktivieren.</p>
+</section>
+<section id="ereignisse"><h2>Ereignisse</h2><p>Platzhalter für Texte: {name}, {text}, {gift} und {count}.</p><div id="rules" class="grid"></div></section>
+<section id="antworten"><h2>Automatische Chatantworten</h2>
+<label>Feste Antworten, je eine Zeile im Format !befehl = Antwort<textarea name="commands" rows="4" placeholder="!regeln = Bitte bleibt respektvoll."></textarea></label>
+<details><summary>Freie Antworten mit einem Sprachmodell</summary>
+<p>Für freie Antworten verarbeitet der von dir gewählte Dienst ausgewählte Chattexte. Trage einen lokalen oder externen Chat-Completions-Endpunkt ein.</p>
+<label class="check"><input name="aiEnabled" type="checkbox"> Freie Antworten aktivieren</label>
+<div class="grid"><label>Wartezeit (Sekunden)<input name="delay" type="number" min="5" max="180" required></label>
+<label>Chat-Completions-URL<input name="aiUrl" type="url" placeholder="http://server:11434/v1/chat/completions"></label>
+<label>Modell<input name="aiModel"></label><label>API-Schlüssel, falls erforderlich<input name="aiKey" type="password" autocomplete="off"></label></div></details>
+</section>
+<div class="save"><button>Einstellungen speichern</button></div></form>
+<section><h2>Soundcheck</h2><form id="simulate"><label>Testereignis<select name="type"><option value="comment">Kommentar</option><option value="gift">Geschenkserie</option><option value="join">Beitritt</option></select></label>
+<label>Testkommentar<input name="text" maxlength="300" placeholder="Hallo, das ist ein Soundcheck."></label><button>Test starten</button></form>
+<audio id="preview" controls hidden></audio><pre id="simulation" hidden></pre></section>
+<section><h2>Eigene Aufnahmen</h2><form id="clip-form"><label>Name<input name="name" maxlength="80" required></label>
+<label>Audiodatei (max. 2 MB)<input name="file" type="file" accept="audio/*,.wav,.webm" required></label><button>Aufnahme hochladen</button></form>
+<button id="record" type="button" class="secondary">Mikrofonaufnahme starten</button><p>Mikrofonzugriff benötigt HTTPS oder localhost. Über HTTP kannst du eine fertige Audiodatei hochladen.</p><ul id="clips"></ul></section>
+<section><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
+<section id="backup"><h2>Backup</h2><form id="backup-form"><label>Backup-Passwort<input name="password" type="password" minlength="12" maxlength="200" required></label>
+<label class="check"><input name="includeSecrets" type="checkbox"> Zugangsdaten in die verschlüsselte Datei aufnehmen</label>
+<button name="mode" value="export">Backup herunterladen</button>
+<label>Datei zur Wiederherstellung<input name="file" type="file" accept=".ttb"></label><button name="mode" value="import" class="secondary">Backup wiederherstellen</button></form></section>
+<section id="fehler"><h2>Fehlerlog</h2><div class="actions"><button id="logs">Aktualisieren</button><button id="download-log" class="secondary">Log herunterladen</button></div><pre id="log-content">Noch nicht geladen.</pre></section>
+<button id="change-password" class="secondary">Admin-Passwort ändern</button>
+</div></main></body></html>
