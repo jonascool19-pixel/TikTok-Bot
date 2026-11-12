@@ -120,9 +120,9 @@ function status() {
   $('#browser-setup').hidden = false;
   const secure = location.protocol === 'https:';
   const httpsLink = $('#browser-https-link');
-  httpsLink.hidden = secure || !state.httpsUrl;
-  if (state.httpsUrl) httpsLink.href = state.httpsUrl;
-  $('#browser-https-status').textContent = !secure ? 'Diese Adresse ist über HTTP geöffnet. Für die TikTok-Anmeldung brauchst du die HTTPS-Adresse.'
+  httpsLink.hidden = secure;
+  httpsLink.href = dashboardHttpsUrl();
+  $('#browser-https-status').textContent = !secure ? '„Bot-Konto verbinden“ öffnet die HTTPS-Adresse in diesem Tab.'
     : state.httpsRecognized ? 'HTTPS erkannt. Melde dich mit deinem separaten Bot-Konto an.'
       : 'Der Browser nutzt HTTPS, aber der Bot erkennt den Reverse-Proxy noch nicht. Prüfe X-Forwarded-Proto und die Proxy-IP.';
   const { cpu, used, limit } = state.resources ?? {};
@@ -234,8 +234,21 @@ async function updateBrowserView() {
     browserTimer = setTimeout(updateBrowserView, 850);
   } catch (error) { notice(error.message, true); }
 }
+function dashboardHttpsUrl() {
+  if (state.httpsUrl) return state.httpsUrl;
+  const url = new URL(location.href);
+  url.protocol = 'https:';
+  url.port = '';
+  url.search = '';
+  url.hash = 'konto';
+  return url.href;
+}
+
 click('#browser-start', async () => {
-  if (location.protocol !== 'https:') throw new Error('Öffne zuerst die HTTPS-Adresse des Dashboards.');
+  if (location.protocol !== 'https:') {
+    location.assign(dashboardHttpsUrl());
+    return;
+  }
   const field = $('#browser-password');
   const password = field.value;
   field.value = '';
