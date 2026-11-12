@@ -34,7 +34,7 @@ info 'Ubuntu-Paketlisten aktualisieren'
 apt-get update
 if [[ "$skip_upgrade" == false ]]; then
   info 'Ubuntu-Pakete aktualisieren'
-  apt-get -y upgrade
+  apt-get -y -o Dpkg::Options::=--force-confold upgrade
 fi
 apt-get install -y --no-install-recommends ca-certificates curl espeak-ng iproute2 xz-utils
 
@@ -59,7 +59,7 @@ here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
 if [[ -f "$here/package-lock.json" && -f "$here/src/server.js" ]]; then
   source_dir=$here
 else
-  ref=v0.1.0
+  ref=v0.1.1
   curl --fail --silent --show-error --location --retry 3 \
     "https://codeload.github.com/jonascool19-pixel/TikTok-Bot/tar.gz/refs/tags/$ref" -o "$tmp/source.tgz"
   mkdir "$tmp/source"

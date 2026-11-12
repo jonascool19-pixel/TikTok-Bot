@@ -9,6 +9,7 @@ permissions:
 jobs:
   test-and-package:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +24,9 @@ jobs:
         run: |
           set -o pipefail
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # The hosted image ships Firefox as a deb, whose upgrade migrates it to Snap.
+            # The Snap Store is unavailable on this runner. Fresh Ubuntu CTs have no Firefox.
+            if dpkg-query -W firefox >/dev/null 2>&1; then sudo apt-mark hold firefox; fi
             installer=$(mktemp)
             curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/install.sh" -o "$installer"
             (umask 077; sudo bash "$installer" > "$RUNNER_TEMP/tiktok-install.out")
