@@ -1,6 +1,7 @@
 export const voices = {
   de: 'Deutsch', en: 'Englisch', fr: 'Französisch', es: 'Spanisch', it: 'Italienisch',
 };
+const naturalVoiceIds = ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low'];
 export const styles = { standard: '', tief: '+m3', hell: '+f3', roboter: '+robot' };
 const types = ['comment', 'gift', 'join'];
 const defaults = {
@@ -29,7 +30,7 @@ export function settings(input = {}) {
   return {
     creator: string(input.creator, 64).replace(/^@/, '').replace(/[^a-z0-9_.]/gi, ''),
     bot: string(input.bot, 64).replace(/^@/, '').replace(/[^a-z0-9_.]/gi, ''),
-    voice: Object.hasOwn(voices, input.voice) ? input.voice : 'de',
+    voice: Object.hasOwn(voices, input.voice) || naturalVoiceIds.includes(input.voice) ? input.voice : 'de',
     style: Object.hasOwn(styles, input.style) ? input.style : 'standard',
     volume: numeric(input.volume, 75, 0, 100),
     speed: numeric(input.speed, 165, 90, 260),

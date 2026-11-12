@@ -5,7 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { dataDir, decryptBackup, encryptBackup, load, passwordHash, passwordMatches, save } from './storage.js';
 import { settings, secrets, string, styles, voices } from './settings.js';
 import { makeTikTok } from './tiktok.js';
-import { speak } from './audio.js';
+import { naturalVoices, speak } from './audio.js';
 import { getLiveActions } from './live-actions.js';
 import { GmailError, makeGmail } from './gmail.js';
 import { makeTikTokProfile } from './tiktok-profile.js';
@@ -436,7 +436,7 @@ async function handle(req, res) {
   }
   if (method === 'GET' && path === '/api/state') {
     return json(res, {
-      config: state.config, status, voices, styles: Object.keys(styles), online: tiktok.online(),
+      config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: tiktok.online(),
       profileLogin: tiktokProfile.enabled,
       botDisplayName: state.botProfile?.username === state.config.bot ? state.botProfile.displayName : '',
       connectedAccount: Boolean(state.secrets.sessionId && state.secrets.targetIdc),

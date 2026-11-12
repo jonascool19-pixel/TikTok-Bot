@@ -126,7 +126,6 @@ function render() {
 function status() {
   $('#status').textContent = state.status;
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
-  $('#tiktok-profile').hidden = !profileAvailable;
   $('#tiktok-profile-help').hidden = profileAvailable;
   $('#account-status').textContent = (state.botDisplayName ? 'TikTok-Profil: ' + state.botDisplayName + '. ' : '') +
     (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.');
@@ -246,6 +245,12 @@ submit('#password-form', async (event) => {
 click('#logout', async () => { await api('logout', {}); await load(); notice(''); });
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
 click('#tiktok-profile', async () => {
+  if (!state.profileLogin || location.protocol !== 'https:') {
+    const help = $('#tiktok-profile-help');
+    help.open = true;
+    help.querySelector('summary').focus();
+    return;
+  }
   const { url } = await api('tiktok/profile/start', {});
   window.location.assign(url);
 });

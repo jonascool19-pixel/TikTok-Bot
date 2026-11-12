@@ -38,7 +38,7 @@ assert.deepEqual(await call('/api/gmail/status'), { enabled: false, address: '',
 await call('/api/gmail/unlock', { password: 'abc123' }, 503);
 assert.equal(state.config.voice, 'de');
 for (const voice of Object.keys(state.voices)) {
-  for (const style of state.styles) {
+  for (const style of (voice.includes('-') ? ['standard'] : state.styles)) {
     const result = await call('/api/simulate', { type: 'gift', config: { ...state.config, voice, style } });
     const wav = Buffer.from(result.audio, 'base64');
     assert.equal(wav.toString('ascii', 0, 4), 'RIFF');

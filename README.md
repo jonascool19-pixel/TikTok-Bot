@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang und einem freien TCP-Port 8080. Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.7/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.8/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -22,7 +22,7 @@ Falls im CT curl fehlt, installiere es zunächst mit apt-get update && apt-get i
 4. Prüfe Kommentare, Geschenke, Begrüßungen und Stimmen im Soundcheck. Die Simulation sendet keine echten Nachrichten. Für die echte Verbindung starte deinen LIVE und sende eine Testnachricht. Prüfe im TikTok-Chat, ob sie unter dem Bot-Konto erscheint.
 5. Öffne die Wiedergabeseite auf einem Gerät im Heimnetz und aktiviere die Ausgabe. Für das Publikum muss dieser Ton in den Audiomix deines Streaming-Setups gelangen. Beim Streaming vom Handy hängt das von deiner Audiohardware ab.
 
-Die lokale Sprachausgabe verwendet eSpeak NG mit mehreren Sprachen und Stimmeffekten. Du kannst stattdessen eigene Audioclips für Ereignisse hinterlegen. Geschenke können einen gesprochenen oder geschriebenen Dank auslösen. Begrüßungen erfolgen nur für tatsächlich empfangene Beitrittsereignisse und haben eine Sendepause. Feste Chatantworten benötigen kein Sprachmodell. Für freie Antworten kannst du einen OpenAI-kompatiblen Chat-Completions-Endpunkt konfigurieren. Ausgewählte Texte gehen dann an diesen Dienst. Meldet sich der Creator im Chat, verwirft der Bot die noch wartenden Antworten.
+Für natürliche lokale Sprachausgabe stehen Thorsten, Kerstin und Amy (Piper) zur Auswahl. Weitere Sprachen und Stimmeffekte laufen über eSpeak NG. Du kannst stattdessen eigene Audioclips für Ereignisse hinterlegen. Geschenke können einen gesprochenen oder geschriebenen Dank auslösen. Begrüßungen erfolgen nur für tatsächlich empfangene Beitrittsereignisse und haben eine Sendepause. Feste Chatantworten benötigen kein Sprachmodell. Für freie Antworten kannst du einen OpenAI-kompatiblen Chat-Completions-Endpunkt konfigurieren. Ausgewählte Texte gehen dann an diesen Dienst. Meldet sich der Creator im Chat, verwirft der Bot die noch wartenden Antworten.
 
 ## TikTok-Profilname per Login Kit
 
@@ -35,7 +35,7 @@ BOT_TIKTOK_CLIENT_SECRET=DEIN-TIKTOK-CLIENT-SECRET
 BOT_TIKTOK_REDIRECT_URI=https://DEIN-HOST/api/tiktok/profile/callback
 ~~~
 
-Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button zur Namensübernahme. Der Creator-Name bleibt unverändert. Login Kit erteilt keine Berechtigung zum Schreiben im LIVE-Chat. Dafür bleibt der in Schritt 3 beschriebene Zugang nötig. Beim Wechsel auf einen anderen Bot-@Namen wird der Versand deaktiviert, bis du dessen Sitzung einrichtest. [TikTok-Profilfelder](https://developers.tiktok.com/docs/en/tiktok-api-v2-get-user-info)
+Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button „TikTok-Konto anmelden“ für die Namensübernahme. Der Creator-Name bleibt unverändert. Login Kit erteilt keine Berechtigung zum Schreiben im LIVE-Chat. Dafür bleibt der in Schritt 3 beschriebene Zugang nötig. Beim Wechsel auf einen anderen Bot-@Namen wird der Versand deaktiviert, bis du dessen Sitzung einrichtest. [TikTok-Profilfelder](https://developers.tiktok.com/docs/en/tiktok-api-v2-get-user-info)
 
 ## Optionales Gmail-Postfach
 

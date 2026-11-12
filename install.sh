@@ -36,7 +36,7 @@ if [[ "$skip_upgrade" == false ]]; then
   info 'Ubuntu-Pakete aktualisieren'
   apt-get -y -o Dpkg::Options::=--force-confold upgrade
 fi
-apt-get install -y --no-install-recommends ca-certificates curl espeak-ng iproute2 xz-utils
+apt-get install -y --no-install-recommends ca-certificates curl espeak-ng iproute2 python3-venv xz-utils
 
 node_version=24.22.3
 node_sha=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb
@@ -54,12 +54,32 @@ if [[ ! -x "$runtime/bin/node" ]]; then
 fi
 export PATH="$runtime/bin:$PATH"
 
+info 'Natürliche Stimmen einrichten'
+piper="$base/piper-1.8.0"
+models="$base/voices"
+if [[ ! -f "$piper/.ready" ]]; then
+  python3 -m venv "$piper"
+  "$piper/bin/pip" install --disable-pip-version-check --no-cache-dir 'piper-tts==1.8.0'
+  touch "$piper/.ready"
+fi
+install -d -m 0755 "$models"
+for voice in de/de_DE/thorsten/medium/de_DE-thorsten-medium de/de_DE/kerstin/low/de_DE-kerstin-low en/en_US/amy/low/en_US-amy-low; do
+  for suffix in onnx onnx.json; do
+    file="${voice##*/}.$suffix"
+    if [[ ! -s "$models/$file" ]]; then
+      curl -fsSL --retry 3 "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/$voice.$suffix" -o "$tmp/$file"
+      install -m 0644 "$tmp/$file" "$models/$file"
+    fi
+  done
+done
+chmod -R a+rX "$piper"
+
 info 'TikTok-Bot installieren'
 here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
 if [[ -f "$here/package-lock.json" && -f "$here/src/server.js" ]]; then
   source_dir=$here
 else
-  ref=v0.1.7
+  ref=v0.1.8
   curl --fail --silent --show-error --location --retry 3 \
     "https://codeload.github.com/jonascool19-pixel/TikTok-Bot/tar.gz/refs/tags/$ref" -o "$tmp/source.tgz"
   mkdir "$tmp/source"
@@ -99,6 +119,8 @@ WorkingDirectory=$base/current
 Environment=BOT_DATA=$state
 Environment=BOT_HOST=0.0.0.0
 Environment=BOT_PORT=$port
+Environment=BOT_PIPER=$piper/bin/piper
+Environment=BOT_PIPER_MODELS=$models
 EnvironmentFile=-/etc/tiktok-bot.env
 ExecStart=$runtime/bin/node $base/current/src/server.js
 Restart=on-failure
