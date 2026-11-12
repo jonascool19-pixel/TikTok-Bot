@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.21/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.22/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -20,7 +20,7 @@ Trage unter TikTok-Verbindung deinen Creator-Namen ein und speichere. Klicke auf
 
 Die Anmeldung bleibt im Browserprofil des CT. Die Verbindung liest sichtbare Textkommentare. Geschenk- und Beitrittsereignisse lassen sich simulieren, werden über diese Verbindung aber noch nicht erfasst. TikTok-Seitenänderungen und die Chromium-Sandbox des CT können den Betrieb beeinflussen.
 
-Unter Audio stehen Thorsten, Kerstin, Amy und drei Cartoon-Varianten zur Auswahl. Für die TikTok-Anmeldung muss der HTTPS-Proxy X-Forwarded-Proto: https setzen. Läuft er auf einem anderen Gerät, setze BOT_TRUSTED_PROXY_IP auf dessen IP. BOT_PUBLIC_URL kann die öffentliche HTTPS-Adresse für den klickbaren Dashboard-Link enthalten. Der Fehlerlog aktualisiert sich alle zehn Sekunden im geöffneten Reiter. Datenverbrauch zeigt gemessene HTTP-Bytes des TikTok-Browsers. CPU und RAM verwenden die Linux-cgroup-Werte.
+Unter Audio stehen Thorsten, Kerstin, Amy und drei Cartoon-Varianten zur Auswahl. Beim Verbinden prüft der Bot HTTPS automatisch. Hinter einem Proxy kann er dafür ein sicheres Browser-Cookie verwenden. BOT_PUBLIC_URL kann die öffentliche HTTPS-Adresse für den klickbaren Dashboard-Link enthalten. Der Fehlerlog aktualisiert sich alle zehn Sekunden im geöffneten Reiter. Datenverbrauch zeigt gemessene HTTP-Bytes des TikTok-Browsers. CPU und RAM verwenden die Linux-cgroup-Werte.
 
 ## Backup und Fehlerdiagnose
 

@@ -51,6 +51,7 @@ process.on('unhandledRejection', (error) => {
 });
 
 const sessions = new Map();
+const browserProofs = new Map();
 const audio = new Map();
 const queue = [];
 const pending = new Map();
@@ -259,6 +260,11 @@ function secureRequest(req) {
       req.headers['x-forwarded-proto'] === 'https');
 }
 
+function hasBrowserProof(req, session) {
+  const proof = req.headers.cookie?.match(/(?:^|;\s*)__Host-ttb_https=([a-f0-9]{64})(?:;|$)/)?.[1];
+  return Boolean(proof && browserProofs.get(session) === proof);
+}
+
 const httpsUrl = (() => {
   try {
     const url = new URL(process.env.BOT_PUBLIC_URL);
@@ -345,6 +351,7 @@ async function handle(req, res) {
   const session = authenticate(req);
   if (!session) throw new RequestError(401, 'Bitte anmelden');
   if (method === 'POST' && path === '/api/logout') {
+    browserProofs.delete(session);
     if (browserLogin === session) { browserLogin = undefined; await webChat.cancel(); }
     sessions.delete(session);
     return json(res, { ok: true });
@@ -355,6 +362,7 @@ async function handle(req, res) {
     requireCondition(validPassword(input.password, 6) && input.current !== input.password, 'Neues Passwort mit 6 bis 200 Zeichen erforderlich');
     persist({ ...state, hash: passwordHash(input.password), firstLogin: false });
     sessions.clear();
+    browserProofs.clear();
     if (browserLogin) { browserLogin = undefined; await webChat.cancel(); }
     newSession(res, req);
     return json(res, { ok: true });
@@ -364,8 +372,18 @@ async function handle(req, res) {
     throw new RequestError(403, 'Zuerst Startpasswort ändern');
   }
   if (path.startsWith('/api/browser/')) {
-    if (!secureRequest(req)) {
-      throw new RequestError(403, 'Der Bot erkennt am Server kein HTTPS. Der Reverse-Proxy muss X-Forwarded-Proto: https setzen. Liegt er auf einem anderen Gerät, hinterlege dessen IP als BOT_TRUSTED_PROXY_IP.');
+    if (method === 'POST' && path === '/api/browser/https') {
+      let origin;
+      try { origin = new URL(req.headers.origin); } catch {}
+      if (origin?.protocol !== 'https:') throw new RequestError(403, 'Öffne die HTTPS-Adresse des Dashboards.');
+      for (const key of browserProofs.keys()) if (!sessions.has(key)) browserProofs.delete(key);
+      const proof = randomBytes(32).toString('hex');
+      browserProofs.set(session, proof);
+      res.setHeader('Set-Cookie', '__Host-ttb_https=' + proof + '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200');
+      return json(res, { ok: true });
+    }
+    if (!secureRequest(req) && !hasBrowserProof(req, session)) {
+      throw new RequestError(403, 'Der HTTPS-Nachweis fehlt. Öffne das Dashboard über HTTPS und erlaube Cookies.');
     }
     if (method === 'GET' && path === '/api/browser/image') {
       if (browserLogin !== session) throw new RequestError(403, 'Starte zuerst die Browser-Anmeldung.');
@@ -399,7 +417,7 @@ async function handle(req, res) {
     return json(res, {
       config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: liveOnline(),
       piperVoices: Object.keys(naturalVoices), resources: stats.resources(),
-      httpsUrl, httpsRecognized: secureRequest(req),
+      httpsUrl, httpsRecognized: secureRequest(req) || hasBrowserProof(req, session),
       connectedAccount: Boolean(state.browserAccount),
       hasAi: Boolean(state.secrets.aiUrl && state.secrets.aiModel),
       clips: state.clips.map(({ id, name }) => ({ id, name })),

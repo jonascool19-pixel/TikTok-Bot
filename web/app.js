@@ -124,7 +124,7 @@ function status() {
   httpsLink.href = dashboardHttpsUrl();
   $('#browser-https-status').textContent = !secure ? '„Bot-Konto verbinden“ öffnet die HTTPS-Adresse in diesem Tab.'
     : state.httpsRecognized ? 'HTTPS erkannt. Melde dich mit deinem separaten Bot-Konto an.'
-      : 'Der Browser nutzt HTTPS, aber der Bot erkennt den Reverse-Proxy noch nicht. Prüfe X-Forwarded-Proto und die Proxy-IP.';
+      : 'Der Bot prüft HTTPS automatisch, wenn du auf „Bot-Konto verbinden“ klickst.';
   const { cpu, used, limit } = state.resources ?? {};
   $('#resources').hidden = false;
   $('#cpu').textContent = 'CPU ' + (cpu == null ? '—' : cpu + ' %');
@@ -253,6 +253,9 @@ click('#browser-start', async () => {
   const password = field.value;
   field.value = '';
   stopBrowserView();
+  if (!state.httpsRecognized) await api('browser/https', {});
+  const verified = await api('state');
+  if (!verified.httpsRecognized) throw new Error('HTTPS konnte nicht bestätigt werden. Erlaube Cookies für dieses Dashboard.');
   await api('browser/start', { password });
   $('#browser-controls').hidden = false;
   void updateBrowserView();
