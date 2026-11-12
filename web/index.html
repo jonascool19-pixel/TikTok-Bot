@@ -17,7 +17,7 @@
 <div class="actions"><button type="button" id="tiktok-euler">Bot-Konto verbinden</button><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>
 <details id="tiktok-euler-help"><summary>Einmalige Einrichtung für Chatversand</summary>
 <p>Die Freigabe öffnet sich bei Euler Stream. Nach deiner Bestätigung übernimmt der Bot den Kontonamen und speichert die Verbindung.</p>
-<ol><li>Öffne das Dashboard über HTTPS.</li><li>Erstelle bei <a href="https://www.eulerstream.com/" target="_blank" rel="noopener noreferrer">Euler Stream</a> einen OAuth-Client mit den Berechtigungen <code>user:info</code> und <code>webcast:chat</code>.</li>
+<ol><li id="euler-https-status">HTTPS wird geprüft.</li><li><a href="https://www.eulerstream.com/register" target="_blank" rel="noopener noreferrer">Erstelle ein separates Euler-Stream-Konto</a> oder melde dich dort mit deinem bestehenden Konto an. Erstelle im Euler-Stream-Dashboard unter „OAuth“ einen Client mit den Berechtigungen <code>user:info</code> und <code>webcast:chat</code>.</li>
 <li>Registriere die HTTPS-Adresse des Dashboards mit dem Pfad <code>/api/tiktok/euler/callback</code>.</li>
 <li>Ergänze als root im CT die folgenden Werte in <code>/etc/tiktok-bot.env</code>. Erzeuge den Schlüssel mit <code>openssl rand -hex 32</code> und starte den Bot-Dienst neu.</li></ol>
 <pre>BOT_SECURE_COOKIE=1
@@ -26,7 +26,7 @@ BOT_EULER_CLIENT_SECRET=DEIN_CLIENT_SECRET
 BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
 BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
 <details id="manual-session"><summary>Versandzugang am PC einrichten oder ändern</summary>
-<p>Melde dich bei TikTok mit dem Bot-Konto an. Für diese Methode braucht der Bot die Sitzungsdaten und einen Euler-Stream-Schlüssel mit Sendefreigabe. Beim Senden erhält Euler Stream die Sitzungsdaten.</p>
+<p>Melde dich bei TikTok mit dem Bot-Konto an. Erstelle im Dashboard deines <a href="https://www.eulerstream.com/register" target="_blank" rel="noopener noreferrer">Euler-Stream-Kontos</a> einen API-Schlüssel mit Sendefreigabe. Beim Senden erhält Euler Stream die Sitzungsdaten.</p>
 <div class="grid"><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
 <label>Euler-Stream-Schlüssel<input name="providerKey" type="password" autocomplete="off" placeholder="Leer lassen, um den Wert zu behalten"></label>
 <label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>

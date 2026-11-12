@@ -127,7 +127,11 @@ function status() {
   $('#status').textContent = state.status;
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
   $('#tiktok-profile').hidden = !profileAvailable;
-  const qrAvailable = state.eulerLogin && location.protocol === 'https:';
+  const https = location.protocol === 'https:';
+  const qrAvailable = state.eulerLogin && https;
+  $('#euler-https-status').textContent = https
+    ? 'HTTPS erkannt. Du kannst mit dem Euler-Stream-Konto weitermachen.'
+    : 'HTTPS fehlt. Diese Seite wurde über HTTP geöffnet. Öffne die HTTPS-Adresse deines Dashboards, sobald sie eingerichtet ist.';
   $('#tiktok-euler-help').hidden = qrAvailable;
   $('#tiktok-euler').textContent = state.eulerLinked ? 'Bot-Konto erneut verbinden' : 'Bot-Konto verbinden';
   $('#disconnect').hidden = !state.connectedAccount;
@@ -139,7 +143,7 @@ function status() {
   $('#account-status').textContent = state.connectedAccount
     ? bot + (state.config.sendEnabled ? ' · Versand eingerichtet. Teste ihn im LIVE.' : ' · Konto hinterlegt. Versand ist ausgeschaltet.')
     : qrAvailable ? 'Verbinde jetzt dein separates Bot-Konto.'
-      : location.protocol !== 'https:' ? 'Für die automatische Verbindung fehlt die HTTPS-Adresse.'
+      : !https ? 'Für die automatische Verbindung fehlt die HTTPS-Adresse.'
         : 'Für die automatische Verbindung fehlt die Euler-Stream-Einrichtung.';
 }
 async function load() {

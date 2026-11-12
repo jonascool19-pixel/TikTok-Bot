@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.14/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.15/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -28,7 +28,7 @@ Für natürliche lokale Sprachausgabe stehen Thorsten, Kerstin und Amy (Piper) z
 
 Die QR-Anmeldung über Euler Stream übernimmt den Bot-Namen und verbindet das Konto für den LIVE-Chat. Sie benötigt eine einmalige Einrichtung pro Installation:
 
-1. Öffne das Dashboard über seinen HTTPS-Hostnamen. Richte bei Euler Stream einen OAuth-Client ein und registriere `https://DEIN-HOST/api/tiktok/euler/callback`. Der Client benötigt die Freigaben `user:info` und `webcast:chat`.
+1. Öffne das Dashboard über seinen HTTPS-Hostnamen. Melde dich mit einem separaten [Euler-Stream-Konto](https://www.eulerstream.com/register) an und richte dort einen OAuth-Client ein und registriere `https://DEIN-HOST/api/tiktok/euler/callback`. Der Client benötigt die Freigaben `user:info` und `webcast:chat`.
 2. Ergänze die Datei `/etc/tiktok-bot.env` (nur für root lesbar):
 
 ~~~dotenv
