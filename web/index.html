@@ -19,8 +19,8 @@
 <label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
 <label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
 <label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
-<p id="account-status"></p><div class="actions"><button type="button" id="tiktok-profile">TikTok-Konto anmelden</button>
-<details id="tiktok-profile-help"><summary>Automatische Namensübernahme einrichten</summary><ol><li>Öffne das Dashboard über HTTPS.</li><li>Aktiviere Login Kit in deiner TikTok-Developer-App mit den Berechtigungen <code>user.info.basic</code> und <code>user.info.profile</code>. Registriere die HTTPS-Adresse dieses Dashboards mit dem Pfad <code>/api/tiktok/profile/callback</code>.</li><li>Trage <code>BOT_SECURE_COOKIE=1</code>, <code>BOT_TIKTOK_CLIENT_KEY</code>, <code>BOT_TIKTOK_CLIENT_SECRET</code> und <code>BOT_TIKTOK_REDIRECT_URI</code> in <code>/etc/tiktok-bot.env</code> ein und starte den Dienst neu.</li><li>Klicke hier auf „Mit TikTok anmelden und Bot-Namen übernehmen“.</li></ol></details>
+<p id="account-status"></p><div class="actions"><a id="tiktok-login" href="https://www.tiktok.com/login" target="_blank" rel="noopener noreferrer">Bei TikTok anmelden</a><button type="button" id="tiktok-profile" hidden>TikTok-Konto verbinden</button>
+<details id="tiktok-profile-help"><summary>Automatische Namensübernahme einrichten</summary><ol><li>Öffne das Dashboard über HTTPS.</li><li>Aktiviere Login Kit in deiner TikTok-Developer-App mit den Berechtigungen <code>user.info.basic</code> und <code>user.info.profile</code>. Registriere die HTTPS-Adresse dieses Dashboards mit dem Pfad <code>/api/tiktok/profile/callback</code>.</li><li>Trage <code>BOT_SECURE_COOKIE=1</code>, <code>BOT_TIKTOK_CLIENT_KEY</code>, <code>BOT_TIKTOK_CLIENT_SECRET</code> und <code>BOT_TIKTOK_REDIRECT_URI</code> in <code>/etc/tiktok-bot.env</code> ein und starte den Dienst neu.</li><li>Klicke hier auf „TikTok-Konto verbinden“.</li></ol></details>
 <button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div></section>
 <section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
 <label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
@@ -49,9 +49,13 @@
 <section data-page="antworten"><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
 <section id="postfach"><h2>Gmail-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
 <p><a href="https://mail.google.com/mail/u/0/" target="_blank" rel="noopener noreferrer">Gmail-Konto Login</a> · Öffnet Gmail in einem neuen Tab.</p>
-<div id="mail-setup"><p>Du kannst ein bestehendes Gmail-Konto für den Bot verwenden.</p>
+<div id="mail-setup"><p>Du kannst ein bestehendes Gmail-Konto für den Bot verwenden. Für den Abruf hier im Dashboard ist eine einmalige Freigabe nötig.</p>
 <div class="actions"><a href="https://accounts.google.com/signup" target="_blank" rel="noreferrer">Neues Gmail-Konto erstellen</a>
-<a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Google-Zugang im CT einrichten</a></div></div>
+ </div><details><summary>Gmail mit dem Dashboard verbinden</summary><ol>
+<li>Öffne das Dashboard unter einem HTTPS-Hostnamen. Im Heimnetz reicht eine private Verbindung zu diesem Hostnamen.</li>
+<li>Aktiviere die Gmail API in deinem Google-Cloud-Projekt und registriere die HTTPS-Adresse mit dem Pfad <code>/api/gmail/callback</code>.</li>
+<li>Hinterlege den Google-Zugang im CT und erstelle in Gmail das Label „TikTok-Bot“. Danach erscheint hier „Mit Google verbinden“. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Konfigurationswerte anzeigen</a>.</li>
+</ol></details></div>
 <form id="mail-form" hidden><label>Admin-Passwort erneut eingeben<input type="password" name="password" autocomplete="current-password" required></label>
 <div class="actions"><button value="start" id="mail-connect">Mit Google verbinden (für Code-Abruf)</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
 <div id="mail-inbox" hidden><div class="actions"><button id="mail-refresh" class="secondary">Nachrichten neu laden</button><button id="mail-lock" class="secondary">Postfach sperren</button></div>

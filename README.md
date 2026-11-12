@@ -4,13 +4,13 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 
 ## Installation
 
-Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang und einem freien TCP-Port 8080. Führe den Befehl als root **im CT** aus:
+Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.8/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.9/install.sh -o "$installer" && bash "$installer"
 ~~~
 
-Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
+Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
 
 Falls im CT curl fehlt, installiere es zunächst mit apt-get update && apt-get install -y curl. Für die Installation aus einem entpackten GitHub-Actions-Artefakt genügt bash install.sh im Paketverzeichnis. Der Installer erzeugt kein öffentliches Port-Forwarding. Nutze das Dashboard nur in deinem vertrauenswürdigen Heimnetz oder hinter einem HTTPS-Reverse-Proxy. Für HTTPS lässt sich BOT_SECURE_COOKIE=1 in /etc/tiktok-bot.env setzen. Die Mikrofonaufnahme im Browser benötigt HTTPS oder localhost. Über HTTP funktioniert der Upload vorhandener Audioclips.
 
@@ -35,7 +35,7 @@ BOT_TIKTOK_CLIENT_SECRET=DEIN-TIKTOK-CLIENT-SECRET
 BOT_TIKTOK_REDIRECT_URI=https://DEIN-HOST/api/tiktok/profile/callback
 ~~~
 
-Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button „TikTok-Konto anmelden“ für die Namensübernahme. Der Creator-Name bleibt unverändert. Login Kit erteilt keine Berechtigung zum Schreiben im LIVE-Chat. Dafür bleibt der in Schritt 3 beschriebene Zugang nötig. Beim Wechsel auf einen anderen Bot-@Namen wird der Versand deaktiviert, bis du dessen Sitzung einrichtest. [TikTok-Profilfelder](https://developers.tiktok.com/docs/en/tiktok-api-v2-get-user-info)
+Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button „TikTok-Konto verbinden“ für die Namensübernahme. Der Creator-Name bleibt unverändert. Login Kit erteilt keine Berechtigung zum Schreiben im LIVE-Chat. Dafür bleibt der in Schritt 3 beschriebene Zugang nötig. Beim Wechsel auf einen anderen Bot-@Namen wird der Versand deaktiviert, bis du dessen Sitzung einrichtest. [TikTok-Profilfelder](https://developers.tiktok.com/docs/en/tiktok-api-v2-get-user-info)
 
 ## Optionales Gmail-Postfach
 
@@ -43,7 +43,7 @@ Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button 
 
 Unter **Gmail-Postfach → Neues Gmail-Konto erstellen** findest du den direkten Einstieg zur Google-Registrierung. Google führt dich durch die Kontoerstellung und etwaige Bestätigungen. Anschließend verbindest du das Postfach im Dashboard.
 
-1. Gib dem Dashboard einen HTTPS-Hostnamen mit einem für deinen Browser vertrauenswürdigen Zertifikat. Ein Reverse-Proxy auf dem CT kann an `http://127.0.0.1:8080` weiterleiten. Mit einem Proxy auf einem anderen Rechner verwende stattdessen die CT-Adresse als Upstream und beschränke Port 8080 per Firewall auf den Proxy. Zeichne für `/api/gmail/callback` keine Zugriffslogs mit Querystrings auf. Die von Google akzeptierte Rücksprungadresse ist keine private IP. [Google zu Rücksprungadressen](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
+1. Gib dem Dashboard einen HTTPS-Hostnamen mit einem für deinen Browser vertrauenswürdigen Zertifikat. Ein Reverse-Proxy auf dem CT leitet an `http://127.0.0.1:PORT` weiter. Verwende den angezeigten Port. Mit einem Proxy auf einem anderen Rechner verwende stattdessen die CT-Adresse als Upstream und beschränke den Bot-Port per Firewall auf den Proxy. Zeichne für `/api/gmail/callback` keine Zugriffslogs mit Querystrings auf. Die von Google akzeptierte Rücksprungadresse ist keine private IP. [Google zu Rücksprungadressen](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
 2. Aktiviere in deinem eigenen [Google-Cloud-Projekt](https://console.cloud.google.com/) die Gmail API, konfiguriere die OAuth-Zustimmungsseite und erstelle einen Client vom Typ **Webanwendung**. Registriere exakt `https://DEIN-HOST/api/gmail/callback` als Rücksprungadresse. Beantragt wird `https://www.googleapis.com/auth/gmail.readonly`. Das Label begrenzt die Anzeige, nicht Googles Berechtigung. Im externen Testmodus fügst du das Bot-Konto als Testnutzer hinzu. Die Freigabe läuft in diesem Modus nach sieben Tagen ab. [Google zum Testmodus](https://support.google.com/cloud/answer/15549945)
 3. Lege in Gmail das Label **TikTok-Bot** an. Erstelle in Gmail einen Filter, der es deinen TikTok-Mails zuweist. Das Dashboard zeigt ausschließlich Nachrichten unter diesem Label.
 4. Ergänze als root die bestehende Datei `/etc/tiktok-bot.env`. Bewahre den OAuth-Client-Schlüssel und den mit `openssl rand -hex 32` erzeugten Schlüssel außerhalb des Git-Repositories auf. Die Datei soll root gehören und Modus `0600` haben.

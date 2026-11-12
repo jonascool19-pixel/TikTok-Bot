@@ -126,9 +126,11 @@ function render() {
 function status() {
   $('#status').textContent = state.status;
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
+  $('#tiktok-profile').hidden = !profileAvailable;
   $('#tiktok-profile-help').hidden = profileAvailable;
   $('#account-status').textContent = (state.botDisplayName ? 'TikTok-Profil: ' + state.botDisplayName + '. ' : '') +
-    (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.');
+    (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.') +
+    (profileAvailable ? '' : ' Du kannst TikTok direkt öffnen. Für die automatische Namensübernahme ist eine einmalige Freigabe nötig.');
 }
 async function load() {
   try { state = await api('state'); }
@@ -164,7 +166,7 @@ async function mailStatus() {
   $('#mail-disconnect').hidden = !mail.connected && !mail.unreadable;
   $('#mail-setup').hidden = mail.enabled && secure;
   $('#mail-status').textContent = !secure
-    ? 'Öffne das Dashboard über HTTPS, um Gmail zu verbinden.'
+    ? 'Gmail lässt sich direkt öffnen. Für den Code-Abruf im Dashboard brauchst du HTTPS.'
     : !mail.enabled ? 'Für diesen CT fehlt noch der einmalige Google-Zugang. Folge der Einrichtungsanleitung.'
       : mail.address + (mail.connected ? ' · Verbunden. Angezeigt werden Nachrichten aus dem Bot-Label.'
         : mail.unreadable ? ' · Verbindung konnte nicht entschlüsselt werden.' : ' · Noch nicht verbunden.');
@@ -245,12 +247,6 @@ submit('#password-form', async (event) => {
 click('#logout', async () => { await api('logout', {}); await load(); notice(''); });
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
 click('#tiktok-profile', async () => {
-  if (!state.profileLogin || location.protocol !== 'https:') {
-    const help = $('#tiktok-profile-help');
-    help.open = true;
-    help.querySelector('summary').focus();
-    return;
-  }
   const { url } = await api('tiktok/profile/start', {});
   window.location.assign(url);
 });

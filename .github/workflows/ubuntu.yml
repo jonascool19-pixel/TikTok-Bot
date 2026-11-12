@@ -34,18 +34,22 @@ jobs:
           else
             (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-install.out")
           fi
-          curl --fail --silent http://127.0.0.1:8080/health
+          port=$(sed -nE 's/^Environment=BOT_PORT=([0-9]+)$/\1/p' /etc/systemd/system/tiktok-bot.service)
+          test "$port" -ge 1024
+          curl --fail --silent "http://127.0.0.1:$port/health"
+          export TEST_BOT_PORT="$port"
           systemctl is-enabled --quiet tiktok-bot
           python3 - <<'PY'
           import os, re, subprocess
           output = open(os.environ['RUNNER_TEMP'] + '/tiktok-install.out').read()
           password = re.search(r'Passwort: ([A-Za-z0-9_-]{24})', output)[1]
           print('::add-mask::' + password)
-          subprocess.run(['node', 'scripts/ubuntu-smoke.js', 'http://127.0.0.1:8080'],
+          subprocess.run(['node', 'scripts/ubuntu-smoke.js', 'http://127.0.0.1:' + os.environ['TEST_BOT_PORT']],
                          env={**os.environ, 'BOT_TEST_PASSWORD': password}, check=True)
           PY
           (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-reinstall.out")
           grep -q 'Bestehendes Passwort verwenden' "$RUNNER_TEMP/tiktok-reinstall.out"
+          grep -Fxq "Environment=BOT_PORT=$port" /etc/systemd/system/tiktok-bot.service
           sudo rm -f "$RUNNER_TEMP/tiktok-install.out"
       - name: Show installer diagnostics on failure
         if: failure()

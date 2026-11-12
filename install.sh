@@ -15,7 +15,8 @@ elif [[ $# != 0 ]]; then printf '%s\n' 'Unbekannte Option.' >&2; exit 1; fi
 
 base=/opt/tiktok-bot
 state=/var/lib/tiktok-bot
-port=8080
+unit=/etc/systemd/system/tiktok-bot.service
+port=
 log=/var/log/tiktok-bot-install.log
 touch "$log"
 chmod 0600 "$log"
@@ -53,6 +54,16 @@ if [[ ! -x "$runtime/bin/node" ]]; then
   mv -T "$tmp/runtime" "$runtime"
 fi
 export PATH="$runtime/bin:$PATH"
+if [[ -r "$unit" ]]; then
+  port=$(sed -nE 's/^Environment=BOT_PORT=([0-9]{1,5})$/\1/p' "$unit" | tail -n 1)
+fi
+if [[ -r /etc/tiktok-bot.env ]]; then
+  configured_port=$(sed -nE 's/^BOT_PORT=([0-9]{1,5})$/\1/p' /etc/tiktok-bot.env | tail -n 1)
+  port="${configured_port:-$port}"
+fi
+if [[ -z "$port" ]]; then
+  port=$(node -e 'const s = require("node:net").createServer(); s.listen(0, "0.0.0.0", () => { console.log(s.address().port); s.close(); });')
+fi
 
 info 'Natürliche Stimmen einrichten'
 piper="$base/piper-1.8.0"
@@ -79,7 +90,7 @@ here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
 if [[ -f "$here/package-lock.json" && -f "$here/src/server.js" ]]; then
   source_dir=$here
 else
-  ref=v0.1.8
+  ref=v0.1.9
   curl --fail --silent --show-error --location --retry 3 \
     "https://codeload.github.com/jonascool19-pixel/TikTok-Bot/tar.gz/refs/tags/$ref" -o "$tmp/source.tgz"
   mkdir "$tmp/source"
@@ -106,7 +117,7 @@ fi
 old=$(readlink "$base/current" || true)
 ln -s "$target" "$base/current.new"
 mv -Tf "$base/current.new" "$base/current"
-cat >/etc/systemd/system/tiktok-bot.service <<UNIT
+cat >"$unit" <<UNIT
 [Unit]
 Description=TikTok-Bot
 Wants=network-online.target
@@ -137,17 +148,20 @@ WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
 
-if [[ -r /etc/tiktok-bot.env ]]; then
-  configured_port=$(sed -nE 's/^BOT_PORT=([0-9]{1,5})$/\1/p' /etc/tiktok-bot.env | tail -n 1)
-  port="${configured_port:-$port}"
-fi
+ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for(i=1;i<NF;i++) if($i=="src") { print $(i+1); exit } }' || true)
+if [[ -z "$ip" ]]; then ip=$(ip -4 -o addr show scope global | awk 'NR==1 {split($4,a,"/"); print a[1]}'); fi
+dashboard_ip=
 healthy=false
 if systemctl restart tiktok-bot; then
   for _ in {1..25}; do
-    if systemctl is-active --quiet tiktok-bot &&
-       curl --fail --silent --max-time 2 "http://127.0.0.1:$port/health" | grep -Fxq '{"ready":true,"service":"tiktok-bot"}'; then
-      healthy=true
-      break
+    if systemctl is-active --quiet tiktok-bot; then
+      for candidate in "${ip:-127.0.0.1}" 127.0.0.1; do
+        if curl --fail --silent --max-time 2 "http://$candidate:$port/health" | grep -Fxq '{"ready":true,"service":"tiktok-bot"}'; then
+          dashboard_ip=$candidate
+          healthy=true
+          break 2
+        fi
+      done
     fi
     sleep 1
   done
@@ -166,14 +180,11 @@ if [[ "$healthy" != true ]]; then
 fi
 systemctl enable tiktok-bot
 
-ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for(i=1;i<NF;i++) if($i=="src") { print $(i+1); exit } }' || true)
-if [[ -z "$ip" ]]; then ip=$(ip -4 -o addr show scope global | awk 'NR==1 {split($4,a,"/"); print a[1]}'); fi
-if [[ -z "$ip" ]] || ! curl --fail --silent --max-time 2 "http://$ip:$port/health" >/dev/null; then ip=127.0.0.1; fi
 password='Bestehendes Passwort verwenden'
 if [[ -s "$pending" ]]; then
   password=$(cat "$pending")
   rm -f -- "$pending"
 fi
 printf '\n\033[1;32m┌────────────────────────────────────────────────────┐\n' >&3
-printf '│ %-50s │\n' 'TikTok-Bot ist erreichbar' "Webseite: http://$ip:$port" 'Benutzer: admin' "Passwort: $password" >&3
+printf '│ %-50s │\n' 'TikTok-Bot ist erreichbar' "Webseite: http://$dashboard_ip:$port" 'Benutzer: admin' "Passwort: $password" >&3
 printf '└────────────────────────────────────────────────────┘\033[0m\n' >&3
