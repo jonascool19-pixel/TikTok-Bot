@@ -7,7 +7,7 @@
 <section id="login" hidden><h2>Anmelden</h2><form id="login-form"><label>Benutzer<input name="username" value="admin" autocomplete="username" required></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button>Anmelden</button></form></section>
 <section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort (mindestens 6 Zeichen)<input name="password" type="password" minlength="6" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
 <div id="dashboard" hidden>
-<nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#postfach">Bot-Postfach</a><a href="#einstellungen">Einstellungen</a><a href="#fehler">Fehlerlog</a></nav>
+<nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#postfach">Gmail-Postfach</a><a href="#einstellungen">Einstellungen</a><a href="#fehler">Fehlerlog</a></nav>
 <form id="settings">
 <section id="konto"><h2>TikTok verbinden</h2><ol>
 <li>Trage deinen Creator-Namen ein und speichere. Der Bot verbindet sich, sobald dein öffentlicher LIVE läuft.</li>
@@ -47,12 +47,13 @@
 <label>Audiodatei (max. 2 MB)<input name="file" type="file" accept="audio/*,.wav,.webm" required></label><button>Aufnahme hochladen</button></form>
 <button id="record" type="button" class="secondary">Mikrofonaufnahme starten</button><p>Mikrofonzugriff benötigt HTTPS oder localhost. Über HTTP kannst du eine fertige Audiodatei hochladen.</p><ul id="clips"></ul></section>
 <section data-page="antworten"><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
-<section id="postfach"><h2>Bot-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
+<section id="postfach"><h2>Gmail-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
+<p><a href="https://mail.google.com/mail/u/0/" target="_blank" rel="noopener noreferrer">Gmail-Konto Login</a> · Öffnet Gmail in einem neuen Tab.</p>
 <div id="mail-setup"><p>Du kannst ein bestehendes Gmail-Konto für den Bot verwenden.</p>
 <div class="actions"><a href="https://accounts.google.com/signup" target="_blank" rel="noreferrer">Neues Gmail-Konto erstellen</a>
 <a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Google-Zugang im CT einrichten</a></div></div>
 <form id="mail-form" hidden><label>Admin-Passwort erneut eingeben<input type="password" name="password" autocomplete="current-password" required></label>
-<div class="actions"><button value="start" id="mail-connect">Mit Google verbinden</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
+<div class="actions"><button value="start" id="mail-connect">Mit Google verbinden (für Code-Abruf)</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
 <div id="mail-inbox" hidden><div class="actions"><button id="mail-refresh" class="secondary">Nachrichten neu laden</button><button id="mail-lock" class="secondary">Postfach sperren</button></div>
 <p id="mail-empty" hidden>Keine Nachrichten im Bot-Label in den letzten 48 Stunden.</p>
 <ul id="mail-list"></ul><pre id="mail-message" aria-live="polite" hidden></pre></div></section>

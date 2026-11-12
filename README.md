@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang und einem freien TCP-Port 8080. Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.5/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.6/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -39,9 +39,9 @@ Nach dem Neustart des Dienstes erscheint unter **TikTok-Verbindung** der Button 
 
 ## Optionales Gmail-Postfach
 
-Das Bot-Postfach ist standardmäßig deaktiviert. Richte es nur für ein separates Gmail-Konto ein, das du für TikTok verwendest. Das Dashboard zeigt bis zu acht gelabelte Nachrichten der letzten 48 Stunden. Nach erneuter Admin-Anmeldung kannst du einzelne Nachrichten zwei Minuten lang als Text öffnen und Codes selbst bei TikTok eingeben. Die Anwendung speichert keine Nachrichten und führt keine Links oder Anhänge aus.
+Über **Gmail-Postfach → Gmail-Konto Login** öffnest du Gmail direkt im Browser. Der automatische Abruf im Dashboard ist standardmäßig deaktiviert. Richte es nur für ein separates Gmail-Konto ein, das du für TikTok verwendest. Das Dashboard zeigt bis zu acht gelabelte Nachrichten der letzten 48 Stunden. Nach erneuter Admin-Anmeldung kannst du einzelne Nachrichten zwei Minuten lang als Text öffnen und Codes selbst bei TikTok eingeben. Die Anwendung speichert keine Nachrichten und führt keine Links oder Anhänge aus.
 
-Unter **Bot-Postfach → Neues Bot-Postfach einrichten** findest du den direkten Einstieg zur Google-Registrierung. Google führt dich durch die Kontoerstellung und etwaige Bestätigungen. Anschließend verbindest du das Postfach im Dashboard.
+Unter **Gmail-Postfach → Neues Gmail-Konto erstellen** findest du den direkten Einstieg zur Google-Registrierung. Google führt dich durch die Kontoerstellung und etwaige Bestätigungen. Anschließend verbindest du das Postfach im Dashboard.
 
 1. Gib dem Dashboard einen HTTPS-Hostnamen mit einem für deinen Browser vertrauenswürdigen Zertifikat. Ein Reverse-Proxy auf dem CT kann an `http://127.0.0.1:8080` weiterleiten. Mit einem Proxy auf einem anderen Rechner verwende stattdessen die CT-Adresse als Upstream und beschränke Port 8080 per Firewall auf den Proxy. Zeichne für `/api/gmail/callback` keine Zugriffslogs mit Querystrings auf. Die von Google akzeptierte Rücksprungadresse ist keine private IP. [Google zu Rücksprungadressen](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
 2. Aktiviere in deinem eigenen [Google-Cloud-Projekt](https://console.cloud.google.com/) die Gmail API, konfiguriere die OAuth-Zustimmungsseite und erstelle einen Client vom Typ **Webanwendung**. Registriere exakt `https://DEIN-HOST/api/gmail/callback` als Rücksprungadresse. Beantragt wird `https://www.googleapis.com/auth/gmail.readonly`. Das Label begrenzt die Anzeige, nicht Googles Berechtigung. Im externen Testmodus fügst du das Bot-Konto als Testnutzer hinzu. Die Freigabe läuft in diesem Modus nach sieben Tagen ab. [Google zum Testmodus](https://support.google.com/cloud/answer/15549945)
@@ -59,7 +59,7 @@ BOT_GMAIL_KEY=DEIN-ZUFAELLIGER-64-STELLIGER-HEX-SCHLUESSEL
 BOT_GMAIL_LABEL=TikTok-Bot
 ~~~
 
-5. Bei einem Proxy auf einem anderen Rechner ersetze `BOT_HOST=127.0.0.1` durch die interne CT-Adresse, bevor du den Dienst mit `systemctl restart tiktok-bot` neu startest. Öffne danach das Dashboard über HTTPS und wähle **Bot-Postfach → Mit Google verbinden**. Melde dich mit dem dort angegebenen Gmail-Konto an.
+5. Bei einem Proxy auf einem anderen Rechner ersetze `BOT_HOST=127.0.0.1` durch die interne CT-Adresse, bevor du den Dienst mit `systemctl restart tiktok-bot` neu startest. Öffne danach das Dashboard über HTTPS und wähle **Gmail-Postfach → Mit Google verbinden (für Code-Abruf)**. Melde dich mit dem dort angegebenen Gmail-Konto an.
 
 Der Refresh-Token liegt verschlüsselt in `/var/lib/tiktok-bot/gmail.enc`. Der Schlüssel bleibt getrennt in der Dienstkonfiguration. Wer den gesamten CT einschließlich Schlüssel und Vault kontrolliert, kann die Daten entschlüsseln. Der Dashboard-Export enthält weder den Gmail-Token noch Nachrichten. Nach einem Dashboard-Import auf einem anderen CT wird Gmail neu verbunden. **Verbindung trennen** entfernt den lokalen Token und versucht, die Google-Freigabe zu widerrufen. Wenn Google den Widerruf nicht bestätigt, kannst du ihn in deinem Google-Konto nachholen.
 
