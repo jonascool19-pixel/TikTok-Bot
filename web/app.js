@@ -42,7 +42,43 @@ function show(view) {
   for (const key of ['login', 'password', 'dashboard']) $('#' + key).hidden = key !== view;
   $('#logout').hidden = view === 'login';
   if (view !== 'dashboard') clearMail();
+  else showPage();
 }
+
+const navigation = $('#dashboard nav');
+const pageLinks = [...navigation.querySelectorAll('a')];
+const sections = [...$('#dashboard').querySelectorAll('section')];
+const settingsPages = new Set([...form.querySelectorAll('section')].map((section) => section.id));
+let activePage;
+
+function showPage() {
+  const hash = window.location.hash.slice(1);
+  const requested = hash === 'backup' ? 'einstellungen' : hash;
+  const selected = pageLinks.some((link) => link.hash === '#' + requested) ? requested : 'konto';
+  if (activePage === 'postfach' && selected !== activePage && !$('#mail-inbox').hidden) {
+    clearMail();
+    void api('gmail/lock', {}).catch(() => {});
+  }
+  activePage = selected;
+  form.hidden = !settingsPages.has(selected);
+  for (const section of sections) section.hidden = (section.dataset.page || section.id) !== selected;
+  for (const link of pageLinks) {
+    if (link.hash === '#' + selected) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+}
+
+navigation.addEventListener('click', (event) => {
+  const link = event.target.closest('a');
+  if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  if (link.hash !== window.location.hash) history.pushState(null, '', link.hash);
+  showPage();
+  window.scrollTo(0, 0);
+  sections.find((section) => !section.hidden)?.querySelector('h2')?.focus({ preventScroll: true });
+});
+for (const section of sections) section.querySelector('h2').tabIndex = -1;
+window.addEventListener('hashchange', showPage);
 
 function option(value, label) { return new Option(label, value); }
 function render() {
@@ -89,7 +125,11 @@ function render() {
 
 function status() {
   $('#status').textContent = state.status;
-  $('#account-status').textContent = state.connectedAccount ? 'Bot-Sitzung hinterlegt.' : 'Keine Bot-Sitzung hinterlegt.';
+  const profileAvailable = state.profileLogin && location.protocol === 'https:';
+  $('#tiktok-profile').hidden = !profileAvailable;
+  $('#tiktok-profile-help').hidden = profileAvailable;
+  $('#account-status').textContent = (state.botDisplayName ? 'TikTok-Profil: ' + state.botDisplayName + '. ' : '') +
+    (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.');
 }
 async function load() {
   try { state = await api('state'); }
@@ -123,9 +163,10 @@ async function mailStatus() {
   $('#mail-connect').hidden = mail.connected;
   $('#mail-unlock').hidden = !mail.connected;
   $('#mail-disconnect').hidden = !mail.connected && !mail.unreadable;
-  $('#mail-status').textContent = !mail.enabled
-    ? 'Gmail ist noch nicht eingerichtet. Die Anleitung steht im GitHub-Repository.'
-    : !secure ? 'Das Bot-Postfach benötigt die HTTPS-Adresse des Dashboards.'
+  $('#mail-setup').hidden = mail.enabled && secure;
+  $('#mail-status').textContent = !secure
+    ? 'Öffne das Dashboard über HTTPS, um Gmail zu verbinden.'
+    : !mail.enabled ? 'Für diesen CT fehlt noch der einmalige Google-Zugang. Folge der Einrichtungsanleitung.'
       : mail.address + (mail.connected ? ' · Verbunden. Angezeigt werden Nachrichten aus dem Bot-Label.'
         : mail.unreadable ? ' · Verbindung konnte nicht entschlüsselt werden.' : ' · Noch nicht verbunden.');
 }
@@ -204,6 +245,10 @@ submit('#password-form', async (event) => {
 });
 click('#logout', async () => { await api('logout', {}); await load(); notice(''); });
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
+click('#tiktok-profile', async () => {
+  const { url } = await api('tiktok/profile/start', {});
+  window.location.assign(url);
+});
 submit('#mail-form', async (event) => {
   const button = event.submitter;
   if (!button) return;
@@ -335,8 +380,16 @@ setInterval(async () => {
 }, 5000);
 await load().catch((error) => notice(error.message, true));
 const mailResult = new URLSearchParams(window.location.search).get('gmail');
+const tiktokResult = new URLSearchParams(window.location.search).get('tiktok');
 if (mailResult) {
   history.replaceState(null, '', '/#postfach');
+  showPage();
   notice(mailResult === 'connected' ? 'Gmail-Postfach verbunden.' : 'Google-Verbindung fehlgeschlagen. Prüfe Einrichtung und Fehlerlog.',
     mailResult !== 'connected');
+}
+if (tiktokResult) {
+  history.replaceState(null, '', '/#konto');
+  showPage();
+  notice(tiktokResult === 'connected' ? 'TikTok-Profil übernommen.' : 'TikTok-Profil konnte nicht übernommen werden. Prüfe das Fehlerlog.',
+    tiktokResult !== 'connected');
 }

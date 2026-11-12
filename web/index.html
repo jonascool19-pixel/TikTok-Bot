@@ -7,7 +7,7 @@
 <section id="login" hidden><h2>Anmelden</h2><form id="login-form"><label>Benutzer<input name="username" value="admin" autocomplete="username" required></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button>Anmelden</button></form></section>
 <section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort (mindestens 6 Zeichen)<input name="password" type="password" minlength="6" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
 <div id="dashboard" hidden>
-<nav aria-label="Bereiche"><a href="#konto">TikTok</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#postfach">Bot-Postfach</a><a href="#backup">Backup</a><a href="#fehler">Fehlerlog</a></nav>
+<nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#postfach">Bot-Postfach</a><a href="#einstellungen">Einstellungen</a><a href="#fehler">Fehlerlog</a></nav>
 <form id="settings">
 <section id="konto"><h2>TikTok verbinden</h2><ol>
 <li>Trage deinen Creator-Namen ein und speichere. Der Bot verbindet sich, sobald dein öffentlicher LIVE läuft.</li>
@@ -19,7 +19,9 @@
 <label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
 <label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
 <label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
-<p id="account-status"></p><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></section>
+<p id="account-status"></p><div class="actions"><button type="button" id="tiktok-profile" hidden>Mit TikTok anmelden und Bot-Namen übernehmen</button>
+<a id="tiktok-profile-help" href="https://github.com/jonascool19-pixel/TikTok-Bot#tiktok-profilname-per-login-kit" target="_blank" rel="noreferrer">Automatische Namensübernahme einrichten</a>
+<button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div></section>
 <section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
 <label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
 <label>Lautstärke (%)<input name="volume" type="number" min="0" max="100" required></label>
@@ -38,27 +40,26 @@
 <label>Modell<input name="aiModel"></label><label>API-Schlüssel, falls erforderlich<input name="aiKey" type="password" autocomplete="off"></label></div></details>
 </section>
 <div class="save"><button>Einstellungen speichern</button></div></form>
-<section><h2>Soundcheck</h2><form id="simulate"><label>Testereignis<select name="type"><option value="comment">Kommentar</option><option value="gift">Geschenkserie</option><option value="join">Beitritt</option></select></label>
+<section data-page="stimme"><h2>Soundcheck</h2><form id="simulate"><label>Testereignis<select name="type"><option value="comment">Kommentar</option><option value="gift">Geschenkserie</option><option value="join">Beitritt</option></select></label>
 <label>Testkommentar<input name="text" maxlength="300" placeholder="Hallo, das ist ein Soundcheck."></label><label class="check"><input name="player" type="checkbox"> Auf aktiven Wiedergabeseiten testen</label><button>Test starten</button></form>
 <audio id="preview" controls hidden></audio><pre id="simulation" hidden></pre></section>
-<section><h2>Eigene Aufnahmen</h2><form id="clip-form"><label>Name<input name="name" maxlength="80" required></label>
+<section data-page="stimme"><h2>Eigene Aufnahmen</h2><form id="clip-form"><label>Name<input name="name" maxlength="80" required></label>
 <label>Audiodatei (max. 2 MB)<input name="file" type="file" accept="audio/*,.wav,.webm" required></label><button>Aufnahme hochladen</button></form>
 <button id="record" type="button" class="secondary">Mikrofonaufnahme starten</button><p>Mikrofonzugriff benötigt HTTPS oder localhost. Über HTTP kannst du eine fertige Audiodatei hochladen.</p><ul id="clips"></ul></section>
-<section><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
+<section data-page="antworten"><h2>Manuell in den LIVE-Chat schreiben</h2><form id="send"><label>Nachricht<input name="text" maxlength="150" required></label><button>Nachricht senden</button></form></section>
 <section id="postfach"><h2>Bot-Postfach</h2><p id="mail-status" aria-live="polite">Gmail-Status wird geladen.</p>
-<details><summary>Neues Bot-Postfach einrichten</summary><ol>
-<li><a href="https://accounts.google.com/signup" target="_blank" rel="noreferrer">Separates Gmail-Konto bei Google erstellen</a>. Wähle dort deinen Bot-Namen und bestätige die Registrierung.</li>
-<li>Hinterlege die neue Gmail-Adresse in der CT-Konfiguration und richte den Google-Zugriff ein. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Einrichtungsanleitung öffnen</a>.</li>
-<li>Kehre hierher zurück und wähle <strong>Mit Google verbinden</strong>.</li></ol></details>
+<div id="mail-setup"><p>Du kannst ein bestehendes Gmail-Konto für den Bot verwenden.</p>
+<div class="actions"><a href="https://accounts.google.com/signup" target="_blank" rel="noreferrer">Neues Gmail-Konto erstellen</a>
+<a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Google-Zugang im CT einrichten</a></div></div>
 <form id="mail-form" hidden><label>Admin-Passwort erneut eingeben<input type="password" name="password" autocomplete="current-password" required></label>
 <div class="actions"><button value="start" id="mail-connect">Mit Google verbinden</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
 <div id="mail-inbox" hidden><div class="actions"><button id="mail-refresh" class="secondary">Nachrichten neu laden</button><button id="mail-lock" class="secondary">Postfach sperren</button></div>
 <p id="mail-empty" hidden>Keine Nachrichten im Bot-Label in den letzten 48 Stunden.</p>
 <ul id="mail-list"></ul><pre id="mail-message" aria-live="polite" hidden></pre></div></section>
-<section id="backup"><h2>Backup</h2><form id="backup-form"><label>Backup-Passwort<input name="password" type="password" minlength="12" maxlength="200" required></label>
+<section id="einstellungen"><h2>Admin-Konto</h2><button id="change-password" class="secondary">Admin-Passwort ändern</button></section>
+<section id="backup" data-page="einstellungen"><h2>Backup</h2><form id="backup-form"><label>Backup-Passwort<input name="password" type="password" minlength="12" maxlength="200" required></label>
 <label class="check"><input name="includeSecrets" type="checkbox"> Zugangsdaten in die verschlüsselte Datei aufnehmen</label>
 <button name="mode" value="export">Backup herunterladen</button>
 <label>Datei zur Wiederherstellung<input name="file" type="file" accept=".ttb"></label><button name="mode" value="import" class="secondary">Backup wiederherstellen</button></form></section>
 <section id="fehler"><h2>Fehlerlog</h2><div class="actions"><button id="logs">Aktualisieren</button><button id="download-log" class="secondary">Log herunterladen</button></div><pre id="log-content">Noch nicht geladen.</pre></section>
-<button id="change-password" class="secondary">Admin-Passwort ändern</button>
 </div></main></body></html>

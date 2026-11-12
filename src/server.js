@@ -8,6 +8,7 @@ import { makeTikTok } from './tiktok.js';
 import { speak } from './audio.js';
 import { getLiveActions } from './live-actions.js';
 import { GmailError, makeGmail } from './gmail.js';
+import { makeTikTokProfile } from './tiktok-profile.js';
 
 let state = load();
 if (process.argv.includes('--init')) {
@@ -66,6 +67,7 @@ const maxClipBytes = 2 * 1024 * 1024;
 const clipTypes = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/mp4']);
 const tiktok = makeTikTok({ event: onLiveEvent, status: (value) => { status = value; }, log });
 const gmail = makeGmail(dataDir);
+const tiktokProfile = makeTikTokProfile();
 
 function persist(next) {
   save(next);
@@ -345,6 +347,29 @@ async function handle(req, res) {
   const path = url.pathname;
   const method = req.method;
   if (method === 'GET' && path === '/health') return json(res, { ready: true, service: 'tiktok-bot' });
+  if (method === 'GET' && path === '/api/tiktok/profile/callback') {
+    const browser = req.headers.cookie?.match(/(?:^|;\s*)ttb_tiktok=([A-Za-z0-9_-]{43})(?:;|$)/)?.[1];
+    if (!browser) throw new RequestError(403, 'Starte die Anmeldung im Dashboard.');
+    let result = 'connected';
+    try {
+      const { username, displayName } = await tiktokProfile.complete(url.searchParams, browser, activeSession);
+      if (username.toLowerCase() === state.config.creator.toLowerCase()) throw new Error('Creator-Konto statt Bot-Konto');
+      const changed = username.toLowerCase() !== state.config.bot.toLowerCase();
+      const config = { ...state.config, bot: username };
+      const updatedSecrets = { ...state.secrets };
+      if (changed) {
+        config.sendEnabled = false;
+        config.aiEnabled = false;
+        updatedSecrets.sessionId = '';
+        updatedSecrets.targetIdc = '';
+      }
+      persist({ ...state, config, secrets: updatedSecrets, botProfile: { username, displayName } });
+      if (changed) reconfigure();
+    } catch (error) { result = 'failed'; log('tiktok', 'Profilfreigabe fehlgeschlagen', error); }
+    res.writeHead(303, { Location: '/?tiktok=' + result + '#konto',
+      'Set-Cookie': 'ttb_tiktok=; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/profile/callback; Max-Age=0' });
+    return res.end();
+  }
   if (method === 'GET' && path === '/api/gmail/callback') {
     if (!/(?:^|;\s*)ttb_gmail=[A-Za-z0-9_-]{43}(?:;|$)/.test(req.headers.cookie ?? '')) {
       throw new RequestError(403, 'Starte die Google-Anmeldung im Dashboard.');
@@ -403,9 +428,17 @@ async function handle(req, res) {
       throw error;
     }
   }
+  if (method === 'POST' && path === '/api/tiktok/profile/start') {
+    if (!tiktokProfile.enabled) throw new RequestError(503, 'TikTok Login Kit ist noch nicht eingerichtet.');
+    const { url, browser } = tiktokProfile.start(session);
+    res.setHeader('Set-Cookie', 'ttb_tiktok=' + browser + '; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/profile/callback; Max-Age=300');
+    return json(res, { url });
+  }
   if (method === 'GET' && path === '/api/state') {
     return json(res, {
       config: state.config, status, voices, styles: Object.keys(styles), online: tiktok.online(),
+      profileLogin: tiktokProfile.enabled,
+      botDisplayName: state.botProfile?.username === state.config.bot ? state.botProfile.displayName : '',
       connectedAccount: Boolean(state.secrets.sessionId && state.secrets.targetIdc),
       hasAi: Boolean(state.secrets.aiUrl && state.secrets.aiModel),
       clips: state.clips.map(({ id, name }) => ({ id, name })),
