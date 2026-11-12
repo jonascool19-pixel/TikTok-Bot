@@ -25,7 +25,7 @@
 <label>Lautstärke (%)<input name="volume" type="number" min="0" max="100" required></label>
 <label>Tempo (Wörter/min)<input name="speed" type="number" min="90" max="260" required></label></div>
 <label class="check"><input name="paused" type="checkbox"> Automatische Aktionen pausieren</label>
-<p><a href="/player" target="_blank" rel="noopener">Wiedergabeseite öffnen</a> und dort die Ausgabe aktivieren.</p>
+<p><a href="/player" target="_blank" rel="noopener">Wiedergabeseite öffnen</a> und dort die Ausgabe aktivieren.</p><button type="button" id="clear-audio" class="secondary">Audiowarteschlange leeren</button>
 </section>
 <section id="ereignisse"><h2>Ereignisse</h2><p>Platzhalter für Texte: {name}, {text}, {gift} und {count}.</p><div id="rules" class="grid"></div></section>
 <section id="antworten"><h2>Automatische Chatantworten</h2>
@@ -39,7 +39,7 @@
 </section>
 <div class="save"><button>Einstellungen speichern</button></div></form>
 <section><h2>Soundcheck</h2><form id="simulate"><label>Testereignis<select name="type"><option value="comment">Kommentar</option><option value="gift">Geschenkserie</option><option value="join">Beitritt</option></select></label>
-<label>Testkommentar<input name="text" maxlength="300" placeholder="Hallo, das ist ein Soundcheck."></label><button>Test starten</button></form>
+<label>Testkommentar<input name="text" maxlength="300" placeholder="Hallo, das ist ein Soundcheck."></label><label class="check"><input name="player" type="checkbox"> Auf aktiven Wiedergabeseiten testen</label><button>Test starten</button></form>
 <audio id="preview" controls hidden></audio><pre id="simulation" hidden></pre></section>
 <section><h2>Eigene Aufnahmen</h2><form id="clip-form"><label>Name<input name="name" maxlength="80" required></label>
 <label>Audiodatei (max. 2 MB)<input name="file" type="file" accept="audio/*,.wav,.webm" required></label><button>Aufnahme hochladen</button></form>

@@ -46,9 +46,15 @@ const config = { ...state.config, voice: 'en', rules: {
   ...state.config.rules, join: { enabled: true, clipId: clip.id, chatTemplate: 'Hallo {name}!' },
 } };
 await call('/api/settings', { config, secrets: { providerKey: 'integration-secret-never-in-log' } });
-const preview = await call('/api/simulate', { type: 'join' });
+const preview = await call('/api/simulate', { type: 'join', player: true });
 assert.deepEqual(preview.actions, [{ type: 'clip', clipId: clip.id }, { type: 'chat', text: 'Hallo Testgast!' }]);
 assert.equal(preview.audio, sound.audio);
+const playback = await call('/api/audio');
+assert.equal(playback.clips.length, 1);
+const stream = await fetch(url + '/api/audio/' + playback.clips[0].id, { headers: { Cookie: cookie } });
+assert.equal(Buffer.from(await stream.arrayBuffer()).toString('base64'), sound.audio);
+await call('/api/audio/clear', {});
+assert.equal((await call('/api/audio')).clips.length, 0);
 const password = 'integration-backup-passphrase';
 const { backup } = await call('/api/backup/export', { password, includeSecrets: true });
 assert.ok(!Buffer.from(backup, 'base64').includes('integration-secret-never-in-log'));

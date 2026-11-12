@@ -22,7 +22,14 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-install.out")
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            installer=$(mktemp)
+            curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/install.sh" -o "$installer"
+            (umask 077; sudo bash "$installer" > "$RUNNER_TEMP/tiktok-install.out")
+            rm -f "$installer"
+          else
+            (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-install.out")
+          fi
           curl --fail --silent http://127.0.0.1:8080/health
           systemctl is-enabled --quiet tiktok-bot
           python3 - <<'PY'

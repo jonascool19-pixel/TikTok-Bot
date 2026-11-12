@@ -25,7 +25,7 @@ async function loop() {
     if (!running) return;
     if (output.reset !== reset || output.latest < cursor) {
       reset = output.reset;
-      cursor = output.latest;
+      cursor = output.clips.length ? output.clips[0].id - 1 : output.latest;
       player.pause();
       player.removeAttribute('src');
       player.load();

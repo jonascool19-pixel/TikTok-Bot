@@ -165,9 +165,14 @@ click('#disconnect', async () => {
   await load();
   notice('Bot-Sitzung entfernt.');
 });
+click('#clear-audio', async () => {
+  await api('audio/clear', {});
+  notice('Audiowarteschlange geleert.');
+});
 submit('#simulate', async (event) => {
   const selected = config();
-  const result = await api('simulate', { ...Object.fromEntries(new FormData(event.target)), config: selected });
+  const player = event.target.elements.player.checked;
+  const result = await api('simulate', { ...Object.fromEntries(new FormData(event.target)), player, config: selected });
   const audio = $('#preview');
   audio.pause();
   if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -180,7 +185,7 @@ submit('#simulate', async (event) => {
     previewUrl = URL.createObjectURL(decode(result.audio, result.mime));
     audio.src = previewUrl;
     audio.volume = selected.volume / 100;
-    await audio.play().catch(() => {});
+    if (!player) await audio.play().catch(() => {});
   }
   notice('Test abgeschlossen.');
 });

@@ -9,11 +9,13 @@ const identity = (user) => ({
 
 export function makeTikTok({ event, status, log }) {
   let connection;
+  let sender;
   let timer;
   let revision = 0;
   let serial = Promise.resolve();
   let online = false;
   let lastSend = 0;
+  let sending = false;
 
   function configure(config, secret) {
     const run = ++revision;
@@ -21,6 +23,7 @@ export function makeTikTok({ event, status, log }) {
     clearTimeout(timer);
     const previous = connection;
     connection = undefined;
+    sender = undefined;
     status(config.creator ? 'Verbinde' : 'Einrichtung erforderlich');
 
     function schedule(delay) {
@@ -39,11 +42,10 @@ export function makeTikTok({ event, status, log }) {
             ? { cookie: { type: 'cookie', value: { sessionId: secret.sessionId, ttTargetIdc: secret.targetIdc } } }
             : undefined;
           const { basePath, baseOptions } = SignConfig;
-          const client = new TikTokLiveConnection(config.creator, {
-            processInitialData: false, session,
-            eulerApiInstance: new EulerStreamApiClient({ basePath, baseOptions, apiKey: secret.providerKey || undefined }),
-          });
+          const eulerApiInstance = new EulerStreamApiClient({ basePath, baseOptions, apiKey: secret.providerKey || undefined });
+          const client = new TikTokLiveConnection(config.creator, { processInitialData: false, eulerApiInstance });
           connection = client;
+          if (session) sender = new TikTokLiveConnection(config.creator, { session, eulerApiInstance });
           const emit = (data) => {
             if (run === revision && online) event(data);
           };
@@ -90,14 +92,19 @@ export function makeTikTok({ event, status, log }) {
   }
 
   async function send(text) {
-    if (!online || !connection) throw new Error('Kein verbundener LIVE');
-    if (Date.now() - lastSend < 6000) throw new Error('Sendepause aktiv');
+    if (!online || !connection?.roomId || !sender) throw new Error('Kein verbundener LIVE oder Bot-Absender');
+    if (sending || Date.now() - lastSend < 6000) throw new Error('Sendepause aktiv');
     lastSend = Date.now();
-    const response = await connection.sendMessage(text);
-    if (response.data?.status_code !== 0) {
-      const error = new Error('TikTok hat die Nachricht nicht bestätigt');
-      error.code = response.data?.status_code ?? response.code;
-      throw error;
+    sending = true;
+    try {
+      const response = await sender.sendMessage(text, connection.roomId);
+      if (response.data?.status_code !== 0) {
+        const error = new Error('TikTok hat die Nachricht nicht bestätigt');
+        error.code = response.data?.status_code ?? response.code;
+        throw error;
+      }
+    } finally {
+      sending = false;
     }
   }
 

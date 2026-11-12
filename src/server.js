@@ -52,6 +52,7 @@ const conversations = new Map();
 let status = 'Einrichtung erforderlich';
 let outputSequence = 0;
 let outputReset = 0;
+let lastPlayerPoll = 0;
 let audioWorker = false;
 let lastGreeting = 0;
 let lastAutomatic = 0;
@@ -80,8 +81,20 @@ function reconfigure() {
   tiktok.configure(state.config, state.secrets);
 }
 
-function pushAudio(action, force = false) {
-  queue.push({ action, force, added: Date.now(), reset: outputReset, config: state.config });
+function clearAudio() {
+  queue.length = 0;
+  audio.clear();
+  outputReset++;
+}
+
+function publishAudio(bytes, mime, volume) {
+  audio.set(++outputSequence, { bytes, mime, volume: volume / 100, time: Date.now() });
+  while (audio.size > 6) audio.delete(audio.keys().next().value);
+}
+
+function pushAudio(action) {
+  if (Date.now() - lastPlayerPoll > 6000) return;
+  queue.push({ action, added: Date.now(), reset: outputReset, config: state.config });
   if (queue.length > 5) queue.shift();
   void drainAudio();
 }
@@ -91,16 +104,14 @@ async function drainAudio() {
   audioWorker = true;
   try {
     while (queue.length) {
-      const { action, force, added, reset, config } = queue.shift();
-      if ((!force && state.config.paused) || Date.now() - added > 12000) continue;
+      const { action, added, reset, config } = queue.shift();
+      if (state.config.paused || Date.now() - added > 12000) continue;
       try {
         const clip = action.type === 'clip' ? state.clips.find(({ id }) => id === action.clipId) : null;
         if (action.type === 'clip' && !clip) throw new Error('Clip fehlt');
         const bytes = clip ? Buffer.from(clip.bytes, 'base64') : await speak(action.text, config);
         if (reset !== outputReset) continue;
-        const id = ++outputSequence;
-        audio.set(id, { bytes, mime: clip?.mime ?? 'audio/wav', volume: config.volume / 100, time: Date.now() });
-        while (audio.size > 6) audio.delete(audio.keys().next().value);
+        publishAudio(bytes, clip?.mime ?? 'audio/wav', config.volume);
       } catch (error) { log('audio', 'Wiedergabe konnte nicht vorbereitet werden', error); }
     }
   } finally { audioWorker = false; }
@@ -267,6 +278,7 @@ function restore(input) {
   requireCondition(clips.every(({ id }) => /^[0-9a-f-]{36}$/.test(id)), 'Ungültige Aufnahme im Backup');
   persist({ ...state, config: { ...settings(restored.config), sendEnabled: false, aiEnabled: false },
     secrets: restored.secrets ? secrets(restored.secrets) : secrets(), clips });
+  clearAudio();
   reconfigure();
 }
 
@@ -331,6 +343,7 @@ async function handle(req, res) {
   }
   if (method === 'GET' && path === '/api/log') return json(res, readLogs());
   if (method === 'GET' && path === '/api/audio') {
+    lastPlayerPoll = Date.now();
     const cutoff = Date.now() - 12000;
     return json(res, { latest: outputSequence, reset: outputReset,
       clips: [...audio].filter(([, value]) => value.time > cutoff).map(([id, value]) => ({ id, volume: value.volume })) });
@@ -360,9 +373,14 @@ async function handle(req, res) {
       ['sessionId', 'targetIdc', 'providerKey'].some((key) => nextSecrets[key] !== state.secrets[key]);
     const paused = config.paused && !state.config.paused;
     persist({ ...state, config, secrets: nextSecrets });
-    if (paused) { queue.length = 0; audio.clear(); outputReset++; }
+    if (paused) clearAudio();
     if (reconnect) reconfigure();
     else if (paused || !config.aiEnabled) cancelAnswers();
+    return json(res, { ok: true });
+  }
+  if (path === '/api/audio/clear') {
+    await body(req);
+    clearAudio();
     return json(res, { ok: true });
   }
   if (path === '/api/simulate') {
@@ -377,7 +395,9 @@ async function handle(req, res) {
       const clip = playable.type === 'clip' ? state.clips.find(({ id }) => id === playable.clipId) : null;
       if (playable.type === 'clip' && !clip) throw new Error('Clip fehlt');
       const bytes = clip ? Buffer.from(clip.bytes, 'base64') : await speak(playable.text, config);
-      return json(res, { actions: result, audio: bytes.toString('base64'), mime: clip?.mime ?? 'audio/wav' });
+      const mime = clip?.mime ?? 'audio/wav';
+      if (input.player === true) publishAudio(bytes, mime, config.volume);
+      return json(res, { actions: result, audio: bytes.toString('base64'), mime });
     } catch (error) {
       log('audio', 'Soundcheck fehlgeschlagen', error);
       throw new RequestError(503, 'Soundcheck fehlgeschlagen. Siehe Fehlerlog.');
