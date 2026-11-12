@@ -26,7 +26,10 @@ await call('/api/login', { username: 'admin', password: initial }, 403, { 'X-Bot
 await call('/api/login', { username: 'admin', password: 'intentionally-incorrect' }, 401);
 assert.equal((await call('/api/login', { username: 'admin', password: initial })).firstLogin, true);
 await call('/api/settings', {}, 403);
-await call('/api/password', { current: initial, password: 'integration-new-password-42' });
+await call('/api/password', { current: initial, password: 'abc12' }, 400);
+await call('/api/password', { current: initial, password: 'abc123' });
+await call('/api/logout', {});
+assert.equal((await call('/api/login', { username: 'admin', password: 'abc123' })).firstLogin, false);
 
 const state = await call('/api/state');
 assert.equal(state.config.voice, 'de');
@@ -56,6 +59,7 @@ assert.equal(Buffer.from(await stream.arrayBuffer()).toString('base64'), sound.a
 await call('/api/audio/clear', {});
 assert.equal((await call('/api/audio')).clips.length, 0);
 const password = 'integration-backup-passphrase';
+await call('/api/backup/export', { password: 'abc123' }, 400);
 const { backup } = await call('/api/backup/export', { password, includeSecrets: true });
 assert.ok(!Buffer.from(backup, 'base64').includes('integration-secret-never-in-log'));
 await call('/api/clip/delete', { id: clip.id });

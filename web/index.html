@@ -5,7 +5,7 @@
 <header><div><h1>TikTok-Bot</h1><p id="status" aria-live="polite">Dashboard im Heimnetz</p></div><button id="logout" hidden>Abmelden</button></header>
 <p id="notice" role="status" hidden></p>
 <section id="login" hidden><h2>Anmelden</h2><form id="login-form"><label>Benutzer<input name="username" value="admin" autocomplete="username" required></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button>Anmelden</button></form></section>
-<section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
+<section id="password" hidden><h2>Admin-Passwort ändern</h2><form id="password-form"><label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label><label>Neues Passwort (mindestens 6 Zeichen)<input name="password" type="password" minlength="6" maxlength="200" autocomplete="new-password" required></label><button>Passwort ändern</button></form></section>
 <div id="dashboard" hidden>
 <nav aria-label="Bereiche"><a href="#konto">TikTok</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#backup">Backup</a><a href="#fehler">Fehlerlog</a></nav>
 <form id="settings">

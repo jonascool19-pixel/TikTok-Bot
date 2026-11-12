@@ -248,8 +248,8 @@ function newSession(res) {
     (process.env.BOT_SECURE_COOKIE === '1' ? '; Secure' : ''));
 }
 
-function validPassword(value) {
-  return typeof value === 'string' && value.length >= 12 && value.length <= 200;
+function validPassword(value, minimum) {
+  return typeof value === 'string' && value.length >= minimum && value.length <= 200;
 }
 
 function readLogs() {
@@ -305,7 +305,7 @@ async function handle(req, res) {
     const now = Date.now();
     if (now >= loginWindow) { loginWindow = now + 60000; loginFailures = 0; }
     if (loginFailures >= 8) throw new RequestError(429, 'Zu viele Versuche. Warte eine Minute.');
-    if (input.username !== 'admin' || !validPassword(input.password) || !passwordMatches(input.password, state.hash)) {
+    if (input.username !== 'admin' || !validPassword(input.password, 6) || !passwordMatches(input.password, state.hash)) {
       loginFailures++;
       log('anmeldung', 'Anmeldung fehlgeschlagen');
       throw new RequestError(401, 'Benutzer oder Passwort falsch');
@@ -322,8 +322,8 @@ async function handle(req, res) {
   }
   if (method === 'POST' && path === '/api/password') {
     const input = await body(req);
-    requireCondition(validPassword(input.current) && passwordMatches(input.current, state.hash), 'Aktuelles Passwort ist falsch');
-    requireCondition(validPassword(input.password) && input.current !== input.password, 'Neues Passwort mit 12 bis 200 Zeichen erforderlich');
+    requireCondition(validPassword(input.current, 6) && passwordMatches(input.current, state.hash), 'Aktuelles Passwort ist falsch');
+    requireCondition(validPassword(input.password, 6) && input.current !== input.password, 'Neues Passwort mit 6 bis 200 Zeichen erforderlich');
     persist({ ...state, hash: passwordHash(input.password), firstLogin: false });
     sessions.clear();
     newSession(res);
@@ -428,7 +428,7 @@ async function handle(req, res) {
   }
   if (path === '/api/backup/export' || path === '/api/backup/import') {
     const input = await body(req, 32 * 1024 * 1024);
-    requireCondition(validPassword(input.password), 'Backup-Passwort mit 12 bis 200 Zeichen erforderlich');
+    requireCondition(validPassword(input.password, 12), 'Backup-Passwort mit 12 bis 200 Zeichen erforderlich');
     if (path.endsWith('/export')) {
       const backup = encryptBackup({ version: 1, config: state.config, clips: state.clips,
         ...(input.includeSecrets === true ? { secrets: state.secrets } : {}) }, input.password);
