@@ -21,9 +21,14 @@
 <label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
 <p id="account-status"></p><div class="actions"><a id="tiktok-login" href="https://www.tiktok.com/login" target="_blank" rel="noopener noreferrer">Bei TikTok anmelden</a><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button>
 <button type="button" id="tiktok-euler" hidden>Bot-Konto per QR-Code verbinden</button>
-<details id="tiktok-euler-help"><summary>QR-Anmeldung einrichten</summary><p>Einmalig einen OAuth-Zugang bei Euler Stream für Profil und LIVE-Chat einrichten. Danach den QR-Code mit dem Bot-Konto in TikTok scannen. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#bot-konto-per-qr-code-verbinden" target="_blank" rel="noopener noreferrer">Einrichtung öffnen</a></p></details>
+<details id="tiktok-euler-help"><summary>QR-Anmeldung einrichten</summary><p>Einmalig einen OAuth-Zugang bei Euler Stream für Profil und LIVE-Chat einrichten. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#bot-konto-per-qr-code-verbinden" target="_blank" rel="noopener noreferrer">Einrichtung öffnen</a></p></details>
 <details id="tiktok-profile-help"><summary>Automatische Namensübernahme einrichten</summary><ol><li>Öffne das Dashboard über HTTPS.</li><li>Aktiviere Login Kit in deiner TikTok-Developer-App mit den Berechtigungen <code>user.info.basic</code> und <code>user.info.profile</code>. Registriere die HTTPS-Adresse dieses Dashboards mit dem Pfad <code>/api/tiktok/profile/callback</code>.</li><li>Trage <code>BOT_SECURE_COOKIE=1</code>, <code>BOT_TIKTOK_CLIENT_KEY</code>, <code>BOT_TIKTOK_CLIENT_SECRET</code> und <code>BOT_TIKTOK_REDIRECT_URI</code> in <code>/etc/tiktok-bot.env</code> ein und starte den Dienst neu.</li><li>Klicke hier auf „TikTok-Konto verbinden“.</li></ol></details>
-<button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div></section>
+<button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>
+<details id="qr-browser"><summary>QR-Code am PC öffnen</summary>
+<p>Lass die Euler-Anmeldung geöffnet. Speichere einen Screenshot des QR-Codes und wähle ihn hier aus. Das Bild wird nur in deinem Browser gelesen.</p>
+<label>Screenshot mit QR-Code<input id="qr-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+<p id="qr-status" role="status"></p><a id="qr-link" target="_blank" rel="noopener noreferrer" hidden>TikTok-QR-Link im Browser öffnen</a>
+</details></section>
 <section id="stimme"><h2>Sprachausgabe</h2><div class="grid">
 <label>Sprache<select name="voice"></select></label><label>Stimmeffekt<select name="style"></select></label>
 <label>Lautstärke (%)<input name="volume" type="number" min="0" max="100" required></label>

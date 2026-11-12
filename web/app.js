@@ -254,8 +254,36 @@ click('#tiktok-profile', async () => {
   window.location.assign(url);
 });
 click('#tiktok-euler', async () => {
-  const { url } = await api('tiktok/euler/start', {});
-  window.location.assign(url);
+  const tab = window.open('about:blank', '_blank');
+  if (!tab) throw new Error('Erlaube Pop-ups für das Dashboard und versuche es erneut.');
+  tab.opener = null;
+  try {
+    const { url } = await api('tiktok/euler/start', {});
+    tab.location.replace(url);
+    $('#qr-browser').open = true;
+  } catch (error) {
+    tab.close();
+    throw error;
+  }
+});
+$('#qr-image').addEventListener('change', async (event) => {
+  const field = event.target;
+  const file = field.files[0];
+  field.value = '';
+  const link = $('#qr-link');
+  link.hidden = true;
+  link.removeAttribute('href');
+  const status = $('#qr-status');
+  status.textContent = '';
+  if (!file) return;
+  field.disabled = true;
+  try {
+    const { decodeTikTokQr } = await import('/qr.js');
+    link.href = await decodeTikTokQr(file);
+    link.hidden = false;
+    status.textContent = 'TikTok-Link erkannt. Ob die Freigabe am PC möglich ist, zeigt TikTok nach dem Öffnen.';
+  } catch (error) { status.textContent = error.message; }
+  finally { field.disabled = false; }
 });
 submit('#mail-form', async (event) => {
   const button = event.submitter;

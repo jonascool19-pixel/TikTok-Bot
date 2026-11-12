@@ -361,6 +361,8 @@ function restore(input) {
 const assets = {
   '/': ['index.html', 'text/html'],
   '/app.js': ['app.js', 'text/javascript'],
+  '/qr.js': ['qr.js', 'text/javascript'],
+  '/jsqr.js': ['../node_modules/jsqr/dist/jsQR.js', 'text/javascript'],
   '/style.css': ['style.css', 'text/css'],
   '/player': ['player.html', 'text/html'],
   '/player.js': ['player.js', 'text/javascript'],
