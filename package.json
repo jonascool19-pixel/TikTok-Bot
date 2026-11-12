@@ -1,6 +1,6 @@
 {
   "name": "tiktok-bot",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,7 +10,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "html-to-text": "10.0.1",
     "jsqr": "1.4.0",
     "tiktok-live-api-sdk": "0.4.0-beta1",
     "tiktok-live-connector": "2.5.0"

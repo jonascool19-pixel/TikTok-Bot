@@ -6,8 +6,6 @@ let state;
 let logEntries = [];
 let previewUrl;
 let recording;
-let mailTimer;
-let mailRevision = 0;
 
 async function api(path, data) {
   const options = data === undefined ? {} : {
@@ -41,25 +39,18 @@ function click(selector, work) { $(selector).addEventListener('click', perform(w
 function show(view) {
   for (const key of ['login', 'password', 'dashboard']) $('#' + key).hidden = key !== view;
   $('#logout').hidden = view === 'login';
-  if (view !== 'dashboard') clearMail();
-  else showPage();
+  if (view === 'dashboard') showPage();
 }
 
 const navigation = $('#dashboard nav');
 const pageLinks = [...navigation.querySelectorAll('a')];
 const sections = [...$('#dashboard').querySelectorAll('section')];
 const settingsPages = new Set([...form.querySelectorAll('section')].map((section) => section.id));
-let activePage;
 
 function showPage() {
   const hash = window.location.hash.slice(1);
   const requested = hash === 'backup' ? 'einstellungen' : hash;
   const selected = pageLinks.some((link) => link.hash === '#' + requested) ? requested : 'konto';
-  if (activePage === 'postfach' && selected !== activePage && !$('#mail-inbox').hidden) {
-    clearMail();
-    void api('gmail/lock', {}).catch(() => {});
-  }
-  activePage = selected;
   form.hidden = !settingsPages.has(selected);
   for (const section of sections) section.hidden = (section.dataset.page || section.id) !== selected;
   for (const link of pageLinks) {
@@ -157,57 +148,6 @@ async function load() {
   if (state.firstLogin) return show('password');
   show('dashboard');
   render();
-  await mailStatus().catch(() => { $('#mail-status').textContent = 'Postfachstatus konnte nicht geladen werden.'; });
-}
-
-function clearMail() {
-  clearTimeout(mailTimer);
-  mailRevision++;
-  $('#mail-inbox').hidden = true;
-  $('#mail-list').replaceChildren();
-  $('#mail-empty').hidden = true;
-  $('#mail-message').textContent = '';
-  $('#mail-message').hidden = true;
-  $('#mail-form').reset();
-}
-
-async function mailStatus() {
-  const mail = await api('gmail/status');
-  const secure = window.isSecureContext && window.location.protocol === 'https:';
-  $('#mail-form').hidden = !mail.enabled || !secure || (!mail.connected && !mail.unreadable);
-  $('#gmail-login').hidden = mail.connected && secure;
-  $('#mail-connect').hidden = mail.connected;
-  $('#mail-unlock').hidden = !mail.connected;
-  $('#mail-disconnect').hidden = !mail.connected && !mail.unreadable;
-  $('#mail-setup').hidden = mail.enabled && secure;
-  $('#mail-status').textContent = !secure
-    ? 'Gmail lässt sich direkt öffnen. Für den Code-Abruf im Dashboard brauchst du HTTPS.'
-    : !mail.enabled ? 'Für diesen CT fehlt noch der einmalige Google-Zugang. Folge der Einrichtungsanleitung.'
-      : mail.address + (mail.connected ? ' · Verbunden. Angezeigt werden Nachrichten aus dem Bot-Label.'
-        : mail.unreadable ? ' · Verbindung konnte nicht entschlüsselt werden.' : ' · Noch nicht verbunden.');
-}
-
-async function loadMail() {
-  const revision = mailRevision;
-  const list = await api('gmail/messages', {});
-  if (revision !== mailRevision) return;
-  $('#mail-empty').hidden = list.messages.length !== 0;
-  $('#mail-list').replaceChildren(...list.messages.map(({ id, received }) => {
-    const item = document.createElement('li');
-    const open = document.createElement('button');
-    open.className = 'secondary';
-    open.textContent = 'Nachricht vom ' + new Date(received).toLocaleString();
-    open.addEventListener('click', perform(async () => {
-      $('#mail-message').textContent = '';
-      $('#mail-message').hidden = true;
-      const message = await api('gmail/message', { id });
-      if (revision !== mailRevision) return;
-      $('#mail-message').textContent = message.text;
-      $('#mail-message').hidden = false;
-    }, open));
-    item.append(open);
-    return item;
-  }));
 }
 
 function config() {
@@ -302,46 +242,6 @@ $('#qr-image').addEventListener('change', async (event) => {
     status.textContent = 'TikTok-Link erkannt. Ob die Freigabe am PC möglich ist, zeigt TikTok nach dem Öffnen.';
   } catch (error) { status.textContent = error.message; }
   finally { field.disabled = false; }
-});
-click('#gmail-login', async () => {
-  await mailStatus();
-  if (!$('#mail-setup').hidden) {
-    const guide = $('#mail-setup details');
-    guide.open = true;
-    guide.querySelector('summary').focus();
-    return;
-  }
-  $('#mail-form').hidden = false;
-  $('#mail-form').elements.password.focus();
-});
-submit('#mail-form', async (event) => {
-  const button = event.submitter;
-  if (!button) return;
-  const password = event.target.elements.password.value;
-  event.target.reset();
-  if (button.value === 'start') {
-    const { url } = await api('gmail/start', { password });
-    window.location.assign(url);
-  } else if (button.value === 'disconnect') {
-    const { revoked } = await api('gmail/disconnect', { password });
-    clearMail();
-    await mailStatus();
-    notice(revoked ? 'Gmail-Verbindung getrennt.' : 'Verbindung lokal entfernt. Entziehe den Zugriff zusätzlich im Google-Konto.');
-  } else {
-    clearMail();
-    await api('gmail/unlock', { password });
-    $('#mail-inbox').hidden = false;
-    mailTimer = setTimeout(clearMail, 115000);
-    await loadMail();
-  }
-});
-click('#mail-refresh', loadMail);
-click('#mail-lock', async () => { clearMail(); await api('gmail/lock', {}); });
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && !$('#mail-inbox').hidden) {
-    clearMail();
-    void api('gmail/lock', {}).catch(() => {});
-  }
 });
 submit('#settings', async () => {
   await api('settings', { config: config(), secrets: secretInput() });
@@ -444,19 +344,12 @@ setInterval(async () => {
   catch (error) { $('#status').textContent = error.message; }
 }, 5000);
 await load().catch((error) => notice(error.message, true));
-const mailResult = new URLSearchParams(window.location.search).get('gmail');
 const tiktokResult = new URLSearchParams(window.location.search).get('tiktok');
 const eulerResult = new URLSearchParams(window.location.search).get('euler');
 if (eulerResult) {
   history.replaceState(null, '', '/#konto');
   showPage();
   notice(eulerResult === 'connected' ? 'Bot-Konto für den LIVE-Chat verbunden.' : 'QR-Anmeldung fehlgeschlagen. Prüfe das Fehlerlog.', eulerResult !== 'connected');
-}
-if (mailResult) {
-  history.replaceState(null, '', '/#postfach');
-  showPage();
-  notice(mailResult === 'connected' ? 'Gmail-Postfach verbunden.' : 'Google-Verbindung fehlgeschlagen. Prüfe Einrichtung und Fehlerlog.',
-    mailResult !== 'connected');
 }
 if (tiktokResult) {
   history.replaceState(null, '', '/#konto');

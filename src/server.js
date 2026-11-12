@@ -7,7 +7,6 @@ import { settings, secrets, string, styles, voices } from './settings.js';
 import { makeTikTok } from './tiktok.js';
 import { naturalVoices, speak } from './audio.js';
 import { getLiveActions } from './live-actions.js';
-import { GmailError, makeGmail } from './gmail.js';
 import { makeTikTokProfile } from './tiktok-profile.js';
 import { makeEuler } from './euler.js';
 
@@ -62,12 +61,9 @@ let lastAutomatic = 0;
 let generation = 0;
 let loginFailures = 0;
 let loginWindow = 0;
-let gmailFailures = 0;
-let gmailWindow = 0;
 const maxClipBytes = 2 * 1024 * 1024;
 const clipTypes = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/mp4']);
 const tiktok = makeTikTok({ event: onLiveEvent, status: (value) => { status = value; }, log });
-const gmail = makeGmail(dataDir);
 const tiktokProfile = makeTikTokProfile();
 const euler = makeEuler();
 let eulerSending = false;
@@ -282,51 +278,7 @@ function validPassword(value, minimum) {
   return typeof value === 'string' && value.length >= minimum && value.length <= 200;
 }
 
-function gmailPassword(password) {
-  const now = Date.now();
-  if (now >= gmailWindow) { gmailWindow = now + 60000; gmailFailures = 0; }
-  if (gmailFailures >= 6) throw new RequestError(429, 'Zu viele Versuche. Warte eine Minute.');
-  if (!validPassword(password, 6) || !passwordMatches(password, state.hash)) {
-    gmailFailures++;
-    log('gmail', 'Erneute Passwortprüfung fehlgeschlagen');
-    throw new RequestError(403, 'Admin-Passwort ist falsch.');
-  }
-}
-
 const activeSession = (session) => (sessions.get(session) ?? 0) > Date.now();
-
-async function gmailRoute(path, method, req, res, session) {
-  if (method === 'GET' && path === '/api/gmail/status') return json(res, gmail.status());
-  if (method !== 'POST') throw new RequestError(404, 'Seite nicht gefunden');
-  const input = await body(req);
-  if (path === '/api/gmail/start') {
-    gmailPassword(input.password);
-    const { url, cookie } = gmail.start(session);
-    res.setHeader('Set-Cookie', cookie);
-    return json(res, { url });
-  }
-  if (path === '/api/gmail/unlock') {
-    gmailPassword(input.password);
-    gmail.unlock(session);
-    return json(res, { ok: true });
-  }
-  if (path === '/api/gmail/lock') {
-    gmail.lock(session);
-    return json(res, { ok: true });
-  }
-  if (path === '/api/gmail/messages') return json(res, await gmail.mailbox(session, undefined, activeSession));
-  if (path === '/api/gmail/message') {
-    requireCondition(typeof input.id === 'string', 'Nachricht fehlt');
-    return json(res, await gmail.mailbox(session, input.id, activeSession));
-  }
-  if (path === '/api/gmail/disconnect') {
-    gmailPassword(input.password);
-    const revoked = await gmail.disconnect();
-    if (!revoked) log('gmail', 'Google-Widerruf konnte nicht bestätigt werden');
-    return json(res, { revoked });
-  }
-  throw new RequestError(404, 'Seite nicht gefunden');
-}
 
 function readLogs() {
   return ['.1', ''].flatMap((suffix) => {
@@ -412,17 +364,6 @@ async function handle(req, res) {
       'Set-Cookie': 'ttb_tiktok=; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok/profile/callback; Max-Age=0' });
     return res.end();
   }
-  if (method === 'GET' && path === '/api/gmail/callback') {
-    if (!/(?:^|;\s*)ttb_gmail=[A-Za-z0-9_-]{43}(?:;|$)/.test(req.headers.cookie ?? '')) {
-      throw new RequestError(403, 'Starte die Google-Anmeldung im Dashboard.');
-    }
-    let result = 'connected';
-    try { await gmail.complete(url.searchParams, req.headers.cookie, activeSession); }
-    catch (error) { result = 'failed'; log('gmail', 'Google-Verbindung fehlgeschlagen', error); }
-    res.writeHead(303, { Location: '/?gmail=' + result + '#postfach',
-      'Set-Cookie': 'ttb_gmail=; HttpOnly; Secure; SameSite=Lax; Path=/api/gmail/callback; Max-Age=0' });
-    return res.end();
-  }
   if (method === 'GET' && Object.hasOwn(assets, path)) {
     const [file, mime] = assets[path];
     res.writeHead(200, { 'Content-Type': mime + '; charset=utf-8' });
@@ -446,7 +387,6 @@ async function handle(req, res) {
   const session = authenticate(req);
   if (!session) throw new RequestError(401, 'Bitte anmelden');
   if (method === 'POST' && path === '/api/logout') {
-    gmail.lock(session);
     sessions.delete(session);
     return json(res, { ok: true });
   }
@@ -462,13 +402,6 @@ async function handle(req, res) {
   if (state.firstLogin) {
     if (method === 'GET' && path === '/api/state') return json(res, { firstLogin: true });
     throw new RequestError(403, 'Zuerst Startpasswort ändern');
-  }
-  if (path.startsWith('/api/gmail/')) {
-    try { return await gmailRoute(path, method, req, res, session); }
-    catch (error) {
-      if (error instanceof GmailError && error.statusCode >= 500) log('gmail', 'Postfachzugriff fehlgeschlagen', error);
-      throw error;
-    }
   }
   if (method === 'POST' && path === '/api/tiktok/profile/start') {
     if (!tiktokProfile.enabled) throw new RequestError(503, 'TikTok Login Kit ist noch nicht eingerichtet.');

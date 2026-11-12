@@ -22,8 +22,6 @@ assert.deepEqual(await call('/health'), { ready: true, service: 'tiktok-bot' });
 assert.match(await (await fetch(url)).text(), /TikTok-Bot/u);
 assert.match(await (await fetch(url + '/player')).text(), /LIVE-Wiedergabe/u);
 await call('/api/state', undefined, 401);
-await call('/api/gmail/status', undefined, 401);
-await call('/api/gmail/callback', undefined, 403);
 await call('/api/login', { username: 'admin', password: initial }, 403, { 'X-Bot-Request': 'invalid' });
 await call('/api/login', { username: 'admin', password: 'intentionally-incorrect' }, 401);
 assert.equal((await call('/api/login', { username: 'admin', password: initial })).firstLogin, true);
@@ -34,8 +32,6 @@ await call('/api/logout', {});
 assert.equal((await call('/api/login', { username: 'admin', password: 'abc123' })).firstLogin, false);
 
 const state = await call('/api/state');
-assert.deepEqual(await call('/api/gmail/status'), { enabled: false, address: '', connected: false });
-await call('/api/gmail/unlock', { password: 'abc123' }, 503);
 assert.equal(state.config.voice, 'de');
 for (const voice of Object.keys(state.voices)) {
   for (const style of (voice.includes('-') ? ['standard'] : state.styles)) {
