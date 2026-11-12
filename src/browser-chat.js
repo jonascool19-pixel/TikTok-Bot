@@ -116,7 +116,7 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
         await page.mouse.click(x, y);
       } else if (kind === 'text' && typeof text === 'string' && text.length <= 300) {
         await page.keyboard.insertText(text);
-      } else if (kind === 'key' && ['Tab', 'Enter', 'Backspace', 'Escape', 'Control+a', 'PageDown', 'PageUp'].includes(key)) {
+      } else if (kind === 'key' && ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'Control+a', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) {
         await page.keyboard.press(key);
       } else throw new Error('Ungültige Eingabe');
     }),

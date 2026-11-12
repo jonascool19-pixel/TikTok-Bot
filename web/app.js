@@ -215,6 +215,8 @@ click('#logout', async () => { await api('logout', {}); await load(); notice('')
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
 let browserFrame;
 let browserTimer;
+let browserRefresh;
+let browserInput = Promise.resolve();
 function stopBrowserView() {
   clearTimeout(browserTimer);
   $('#browser-controls').hidden = true;
@@ -222,17 +224,24 @@ function stopBrowserView() {
   if (browserFrame) URL.revokeObjectURL(browserFrame);
 }
 async function updateBrowserView() {
-  if ($('#browser-controls').hidden) return;
+  if ($('#browser-controls').hidden || browserRefresh) return;
+  clearTimeout(browserTimer);
+  browserRefresh = new AbortController();
+  const refresh = browserRefresh;
   try {
-    const response = await fetch('/api/browser/image');
-    if (!response.ok) throw new Error('Browseransicht nicht verfügbar.');
+    const response = await fetch('/api/browser/image', { signal: refresh.signal });
+    if (!response.ok) throw new Error((await response.json()).error || 'Browseransicht nicht verfügbar.');
     const blob = await response.blob();
     if ($('#browser-controls').hidden) return;
     if (browserFrame) URL.revokeObjectURL(browserFrame);
     browserFrame = URL.createObjectURL(blob);
     $('#browser-image').src = browserFrame;
-    browserTimer = setTimeout(updateBrowserView, 850);
-  } catch (error) { notice(error.message, true); }
+  } catch (error) {
+    if (!refresh.signal.aborted) $('#browser-input-status').textContent = error.message;
+  } finally {
+    browserRefresh = undefined;
+    if (!$('#browser-controls').hidden) browserTimer = setTimeout(updateBrowserView, 850);
+  }
 }
 function dashboardHttpsUrl() {
   if (state.httpsUrl) return state.httpsUrl;
@@ -260,18 +269,38 @@ click('#browser-start', async () => {
   $('#browser-controls').hidden = false;
   void updateBrowserView();
 });
+function sendBrowserInput(data) {
+  const task = browserInput.then(async () => {
+    if ($('#browser-controls').hidden) return;
+    await api('browser/input', data);
+    $('#browser-input-status').textContent = '';
+    await updateBrowserView();
+  });
+  browserInput = task.catch((error) => { $('#browser-input-status').textContent = error.message; });
+  return browserInput;
+}
 click('#browser-image', (event) => {
+  event.target.focus({ preventScroll: true });
   const bounds = event.target.getBoundingClientRect();
-  return api('browser/input', { kind: 'click', x: (event.clientX - bounds.left) * 1000 / bounds.width,
+  return sendBrowserInput({ kind: 'click', x: (event.clientX - bounds.left) * 1000 / bounds.width,
     y: (event.clientY - bounds.top) * 720 / bounds.height });
+});
+$('#browser-image').addEventListener('keydown', (event) => {
+  if (event.isComposing) return;
+  const key = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' ? 'Control+a' : event.key;
+  const editing = ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key) || key === 'Control+a';
+  if (editing || (!event.ctrlKey && !event.metaKey && !event.altKey && key.length === 1)) {
+    event.preventDefault();
+    void sendBrowserInput(editing ? { kind: 'key', key } : { kind: 'text', text: key });
+  }
 });
 click('#browser-type', async () => {
   const field = $('#browser-text');
   const text = field.value;
   field.value = '';
-  await api('browser/input', { kind: 'text', text });
+  await sendBrowserInput({ kind: 'text', text });
 });
-click('#browser-enter', () => api('browser/input', { kind: 'key', key: 'Enter' }));
+click('#browser-enter', () => sendBrowserInput({ kind: 'key', key: 'Enter' }));
 click('#browser-finish', async () => {
   await api('browser/finish', {});
   stopBrowserView();
