@@ -1,7 +1,12 @@
 export const voices = {
   de: 'Deutsch', en: 'Englisch', fr: 'Französisch', es: 'Spanisch', it: 'Italienisch',
 };
-const naturalVoiceIds = ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low'];
+export const characterVoices = {
+  'cartoon-amused': ['Deutsch · Cartoon (amüsiert)', 0],
+  'cartoon-angry': ['Deutsch · Cartoon (wütend)', 1],
+  'cartoon-surprised': ['Deutsch · Cartoon (überrascht)', 6],
+};
+const naturalVoiceIds = ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low', ...Object.keys(characterVoices)];
 export const styles = { standard: '', tief: '+m3', hell: '+f3', roboter: '+robot' };
 const types = ['comment', 'gift', 'join'];
 const defaults = {

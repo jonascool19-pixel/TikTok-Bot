@@ -253,12 +253,25 @@ function authenticate(req) {
   return session;
 }
 
-function newSession(res) {
+function secureRequest(req) {
+  return req.socket.encrypted === true ||
+    (['127.0.0.1', '::1', '::ffff:127.0.0.1', process.env.BOT_TRUSTED_PROXY_IP].includes(req.socket.remoteAddress) &&
+      req.headers['x-forwarded-proto'] === 'https');
+}
+
+const httpsUrl = (() => {
+  try {
+    const url = new URL(process.env.BOT_PUBLIC_URL);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.origin + '/#konto' : '';
+  } catch { return ''; }
+})();
+
+function newSession(res, req) {
   const token = randomBytes(32).toString('hex');
   sessions.set(token, Date.now() + 12 * 3600000);
   while (sessions.size > 16) sessions.delete(sessions.keys().next().value);
   res.setHeader('Set-Cookie', 'sid=' + token + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200' +
-    (process.env.BOT_SECURE_COOKIE === '1' ? '; Secure' : ''));
+    (secureRequest(req) || process.env.BOT_SECURE_COOKIE === '1' ? '; Secure' : ''));
 }
 
 function validPassword(value, minimum) {
@@ -326,7 +339,7 @@ async function handle(req, res) {
       throw new RequestError(401, 'Benutzer oder Passwort falsch');
     }
     loginFailures = 0;
-    newSession(res);
+    newSession(res, req);
     return json(res, { firstLogin: state.firstLogin });
   }
   const session = authenticate(req);
@@ -343,7 +356,7 @@ async function handle(req, res) {
     persist({ ...state, hash: passwordHash(input.password), firstLogin: false });
     sessions.clear();
     if (browserLogin) { browserLogin = undefined; await webChat.cancel(); }
-    newSession(res);
+    newSession(res, req);
     return json(res, { ok: true });
   }
   if (state.firstLogin) {
@@ -351,8 +364,8 @@ async function handle(req, res) {
     throw new RequestError(403, 'Zuerst Startpasswort ändern');
   }
   if (path.startsWith('/api/browser/')) {
-    if (process.env.BOT_SECURE_COOKIE !== '1') {
-      throw new RequestError(403, 'Öffne das Dashboard über HTTPS.');
+    if (!secureRequest(req)) {
+      throw new RequestError(403, 'Der Bot erkennt am Server kein HTTPS. Der Reverse-Proxy muss X-Forwarded-Proto: https setzen. Liegt er auf einem anderen Gerät, hinterlege dessen IP als BOT_TRUSTED_PROXY_IP.');
     }
     if (method === 'GET' && path === '/api/browser/image') {
       if (browserLogin !== session) throw new RequestError(403, 'Starte zuerst die Browser-Anmeldung.');
@@ -386,6 +399,7 @@ async function handle(req, res) {
     return json(res, {
       config: state.config, status, voices: { ...naturalVoices, ...voices }, styles: Object.keys(styles), online: liveOnline(),
       piperVoices: Object.keys(naturalVoices), resources: stats.resources(),
+      httpsUrl, httpsRecognized: secureRequest(req),
       connectedAccount: Boolean(state.browserAccount),
       hasAi: Boolean(state.secrets.aiUrl && state.secrets.aiModel),
       clips: state.clips.map(({ id, name }) => ({ id, name })),

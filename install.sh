@@ -74,7 +74,7 @@ if [[ ! -f "$piper/.ready" ]]; then
   touch "$piper/.ready"
 fi
 install -d -m 0755 "$models"
-for voice in de/de_DE/thorsten/medium/de_DE-thorsten-medium de/de_DE/kerstin/low/de_DE-kerstin-low en/en_US/amy/low/en_US-amy-low; do
+for voice in de/de_DE/thorsten/medium/de_DE-thorsten-medium de/de_DE/kerstin/low/de_DE-kerstin-low en/en_US/amy/low/en_US-amy-low de/de_DE/thorsten_emotional/medium/de_DE-thorsten_emotional-medium; do
   for suffix in onnx onnx.json; do
     file="${voice##*/}.$suffix"
     if [[ ! -s "$models/$file" ]]; then
@@ -90,7 +90,7 @@ here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
 if [[ -f "$here/package-lock.json" && -f "$here/src/server.js" ]]; then
   source_dir=$here
 else
-  ref=v0.1.19
+  ref=v0.1.20
   curl --fail --silent --show-error --location --retry 3 \
     "https://codeload.github.com/jonascool19-pixel/TikTok-Bot/tar.gz/refs/tags/$ref" -o "$tmp/source.tgz"
   mkdir "$tmp/source"

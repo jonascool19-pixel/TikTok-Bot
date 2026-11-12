@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { availableParallelism } from 'node:os';
+import { availableParallelism, totalmem, freemem } from 'node:os';
 
 const hour = 3600000;
 const sum = (a, b) => [a[0] + b[0], a[1] + b[1]];
@@ -56,7 +56,7 @@ export function metrics(directory, log) {
         const used = Number(cg('memory.current'));
         const limit = cg('memory.max');
         return { cpu, used, limit: limit === 'max' ? null : Number(limit) };
-      } catch { return { cpu, used: null, limit: null }; }
+      } catch { return { cpu, used: totalmem() - freemem(), limit: totalmem() }; }
     },
   };
 }

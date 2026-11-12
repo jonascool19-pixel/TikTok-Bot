@@ -32,7 +32,7 @@ await call('/api/logout', {});
 assert.equal((await call('/api/login', { username: 'admin', password: 'abc123' })).firstLogin, false);
 
 const state = await call('/api/state');
-assert.deepEqual(state.piperVoices, ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low']);
+assert.deepEqual(state.piperVoices, ['de_DE-thorsten-medium', 'de_DE-kerstin-low', 'en_US-amy-low', 'cartoon-amused', 'cartoon-angry', 'cartoon-surprised']);
 assert.deepEqual(await call('/api/traffic'), { day: [0, 0], week: [0, 0], total: [0, 0] });
 assert.ok(Number.isFinite(state.resources.used));
 assert.equal(state.config.voice, 'de');

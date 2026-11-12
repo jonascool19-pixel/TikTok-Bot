@@ -118,12 +118,19 @@ function render() {
 
 function status() {
   $('#browser-setup').hidden = false;
+  const secure = location.protocol === 'https:';
+  const httpsLink = $('#browser-https-link');
+  httpsLink.hidden = secure || !state.httpsUrl;
+  if (state.httpsUrl) httpsLink.href = state.httpsUrl;
+  $('#browser-https-status').textContent = !secure ? 'Diese Adresse ist über HTTP geöffnet. Für die TikTok-Anmeldung brauchst du die HTTPS-Adresse.'
+    : state.httpsRecognized ? 'HTTPS erkannt. Melde dich mit deinem separaten Bot-Konto an.'
+      : 'Der Browser nutzt HTTPS, aber der Bot erkennt den Reverse-Proxy noch nicht. Prüfe X-Forwarded-Proto und die Proxy-IP.';
   const { cpu, used, limit } = state.resources ?? {};
   $('#resources').hidden = false;
   $('#cpu').textContent = 'CPU ' + (cpu == null ? '—' : cpu + ' %');
   $('#ram').textContent = 'RAM ' + (used == null ? '—' : formatBytes(used) + (limit ? ' / ' + formatBytes(limit) : ''));
   $('#voice-status').textContent = state.piperVoices?.length
-    ? 'Thorsten, Kerstin und Amy findest du unter Stimme.'
+    ? 'Natürliche Stimmen und installierte Cartoon-Varianten findest du unter Stimme.'
     : 'Piper ist nicht verfügbar. Prüfe die Installation der Stimmen.';
   $('#status').textContent = state.status;
   $('#disconnect').hidden = !state.connectedAccount;

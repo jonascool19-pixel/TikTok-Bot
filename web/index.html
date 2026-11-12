@@ -13,7 +13,8 @@
 <p>Trage den @Namen ein, mit dem du streamst, und speichere. Sobald dein öffentlicher LIVE läuft, versucht der Bot, sich zu verbinden.</p>
 <label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label>
 <div id="browser-setup" hidden>
-<p>Öffne das Dashboard über HTTPS und melde dich hier mit dem separaten Bot-Konto an.</p>
+<p id="browser-https-status" aria-live="polite"></p>
+<p><a id="browser-https-link" hidden>Dashboard über HTTPS öffnen</a></p>
 <label>Admin-Passwort<input id="browser-password" type="password" autocomplete="current-password"></label>
 <button type="button" id="browser-start">Bot-Konto verbinden</button>
 <div id="browser-controls" hidden>
