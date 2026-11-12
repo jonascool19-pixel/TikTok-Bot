@@ -128,12 +128,13 @@ function status() {
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
   $('#tiktok-profile').hidden = !profileAvailable;
   const qrAvailable = state.eulerLogin && location.protocol === 'https:';
-  $('#tiktok-euler').hidden = !qrAvailable;
   $('#tiktok-euler-help').hidden = qrAvailable;
-  $('#tiktok-profile-help').hidden = profileAvailable;
-  $('#account-status').textContent = (state.botDisplayName ? 'TikTok-Profil: ' + state.botDisplayName + '. ' : '') +
-    (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.') +
-    (profileAvailable ? '' : ' Du kannst TikTok direkt öffnen. Für die automatische Namensübernahme ist eine einmalige Freigabe nötig.');
+  const bot = state.config.bot ? '@' + state.config.bot : '';
+  $('#account-status').textContent = state.connectedAccount
+    ? bot + (state.config.sendEnabled ? ' · Versand eingerichtet. Teste ihn im LIVE.' : ' · Konto hinterlegt. Versand ist ausgeschaltet.')
+    : qrAvailable ? 'Verbinde jetzt dein separates Bot-Konto.'
+      : location.protocol !== 'https:' ? 'Für die automatische Verbindung fehlt die HTTPS-Adresse.'
+        : 'Für die automatische Verbindung fehlt die Euler-Stream-Einrichtung.';
 }
 async function load() {
   try { state = await api('state'); }
@@ -254,6 +255,12 @@ click('#tiktok-profile', async () => {
   window.location.assign(url);
 });
 click('#tiktok-euler', async () => {
+  if (!state.eulerLogin || location.protocol !== 'https:') {
+    const help = $('#tiktok-euler-help');
+    help.open = true;
+    help.querySelector('summary').focus();
+    return;
+  }
   const tab = window.open('about:blank', '_blank');
   if (!tab) throw new Error('Erlaube Pop-ups für das Dashboard und versuche es erneut.');
   tab.opener = null;

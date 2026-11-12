@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.12/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.13/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -39,7 +39,7 @@ BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
 BOT_EULER_VAULT_KEY=DEIN-ZUFAELLIGER-64-STELLIGER-HEX-SCHLUESSEL
 ~~~
 
-3. Erzeuge den Schlüssel mit `openssl rand -hex 32` und starte danach den Bot-Dienst neu. Hinterlege deinen Creator-Namen. Klicke auf **Bot-Konto per QR-Code verbinden** und bestätige die Anmeldung in TikTok mit deinem separaten Bot-Konto.
+3. Erzeuge den Schlüssel mit `openssl rand -hex 32` und starte danach den Bot-Dienst neu. Hinterlege deinen Creator-Namen. Klicke auf **Bot-Konto verbinden** und bestätige die Anmeldung in TikTok mit deinem separaten Bot-Konto.
 
 Für den Versuch ohne Handy lässt du die Euler-Anmeldung geöffnet und wählst einen Screenshot des QR-Codes unter **QR-Code am PC öffnen** aus. Der Browser liest das Bild lokal und zeigt einen Link an, wenn der Code einen HTTPS-Link zu TikTok enthält. Ob TikTok die Freigabe im Browser anbietet, zeigt der echte Anmeldeversuch.
 

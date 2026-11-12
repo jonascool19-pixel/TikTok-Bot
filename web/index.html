@@ -9,21 +9,30 @@
 <div id="dashboard" hidden>
 <nav aria-label="Bereiche"><a href="#konto">TikTok-Verbindung</a><a href="#stimme">Audio</a><a href="#ereignisse">Ereignisse</a><a href="#antworten">Chat</a><a href="#postfach">Gmail-Postfach</a><a href="#einstellungen">Einstellungen</a><a href="#fehler">Fehlerlog</a></nav>
 <form id="settings">
-<section id="konto"><h2>TikTok verbinden</h2><ol>
-<li>Trage deinen Creator-Namen ein und speichere. Der Bot verbindet sich, sobald dein öffentlicher LIVE läuft.</li>
-<li><a href="https://www.tiktok.com/signup" target="_blank" rel="noreferrer">Erstelle bei TikTok ein separates Bot-Konto</a>. Vergib dort den Namen, den Zuschauer im Chat sehen sollen.</li>
-<li>Zum Schreiben brauchst du eine aktive Sitzung dieses Kontos und einen Euler-Stream-Zugang mit Freigabe für Chatversand. Richte die Sitzung gemäß der <a href="https://ttlc.docs.isaackogan.com/configuration/authentication/" target="_blank" rel="noreferrer">Connector-Dokumentation</a> ein. Beim Versand erhält der Anbieter die Bot-Sitzungsdaten.</li>
-</ol>
-<div class="grid"><label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
+<section id="konto"><h2>Deinen LIVE mitlesen</h2>
+<p>Trage den @Namen ein, mit dem du streamst, und speichere. Sobald dein öffentlicher LIVE läuft, versucht der Bot, sich zu verbinden.</p>
+<label>Creator @Name<input name="creator" maxlength="64" placeholder="@deinname"></label>
+<h2>Mit dem Bot-Konto im Chat schreiben</h2>
+<p id="account-status" aria-live="polite"></p>
+<div class="actions"><button type="button" id="tiktok-euler">Bot-Konto verbinden</button><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button><button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>
+<details id="tiktok-euler-help"><summary>Einmalige Einrichtung für Chatversand</summary>
+<p>Die Freigabe öffnet sich bei Euler Stream. Nach deiner Bestätigung übernimmt der Bot den Kontonamen und speichert die Verbindung.</p>
+<ol><li>Öffne das Dashboard über HTTPS.</li><li>Erstelle bei <a href="https://www.eulerstream.com/" target="_blank" rel="noopener noreferrer">Euler Stream</a> einen OAuth-Client mit den Berechtigungen <code>user:info</code> und <code>webcast:chat</code>.</li>
+<li>Registriere die HTTPS-Adresse des Dashboards mit dem Pfad <code>/api/tiktok/euler/callback</code>.</li>
+<li>Ergänze als root im CT die folgenden Werte in <code>/etc/tiktok-bot.env</code>. Erzeuge den Schlüssel mit <code>openssl rand -hex 32</code> und starte den Bot-Dienst neu.</li></ol>
+<pre>BOT_SECURE_COOKIE=1
+BOT_EULER_CLIENT_ID=DEINE_CLIENT_ID
+BOT_EULER_CLIENT_SECRET=DEIN_CLIENT_SECRET
+BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
+BOT_EULER_VAULT_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL</pre></details>
+<details><summary>Manuelle Websitzung für den Chatversand</summary>
+<p>Melde dich bei TikTok mit dem Bot-Konto an. Für diese Methode braucht der Bot die Sitzungsdaten und einen Euler-Stream-Schlüssel mit Sendefreigabe. Beim Senden erhält Euler Stream die Sitzungsdaten.</p>
+<div class="grid"><label>Bot @Name<input name="bot" maxlength="64" placeholder="@deinname_bot"></label>
 <label>Euler-Stream-Schlüssel<input name="providerKey" type="password" autocomplete="off" placeholder="Leer lassen, um den Wert zu behalten"></label>
 <label>Bot-Sitzung (sessionid)<input name="sessionId" type="password" autocomplete="off"></label>
 <label>Bot-Rechenzentrum (tt-target-idc)<input name="targetIdc" type="password" autocomplete="off"></label></div>
 <label class="check"><input name="sendEnabled" type="checkbox"> Versand vom Bot-Konto erlauben</label>
-<p id="account-status"></p><div class="actions"><a id="tiktok-login" href="https://www.tiktok.com/login" target="_blank" rel="noopener noreferrer">Bei TikTok anmelden</a><button type="button" id="tiktok-profile" hidden>TikTok-Profil übernehmen</button>
-<button type="button" id="tiktok-euler" hidden>Bot-Konto per QR-Code verbinden</button>
-<details id="tiktok-euler-help"><summary>QR-Anmeldung einrichten</summary><p>Einmalig einen OAuth-Zugang bei Euler Stream für Profil und LIVE-Chat einrichten. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#bot-konto-per-qr-code-verbinden" target="_blank" rel="noopener noreferrer">Einrichtung öffnen</a></p></details>
-<details id="tiktok-profile-help"><summary>Automatische Namensübernahme einrichten</summary><ol><li>Öffne das Dashboard über HTTPS.</li><li>Aktiviere Login Kit in deiner TikTok-Developer-App mit den Berechtigungen <code>user.info.basic</code> und <code>user.info.profile</code>. Registriere die HTTPS-Adresse dieses Dashboards mit dem Pfad <code>/api/tiktok/profile/callback</code>.</li><li>Trage <code>BOT_SECURE_COOKIE=1</code>, <code>BOT_TIKTOK_CLIENT_KEY</code>, <code>BOT_TIKTOK_CLIENT_SECRET</code> und <code>BOT_TIKTOK_REDIRECT_URI</code> in <code>/etc/tiktok-bot.env</code> ein und starte den Dienst neu.</li><li>Klicke hier auf „TikTok-Konto verbinden“.</li></ol></details>
-<button type="button" id="disconnect" class="secondary">Bot-Sitzung entfernen</button></div>
+</details>
 <details id="qr-browser"><summary>QR-Code am PC öffnen</summary>
 <p>Lass die Euler-Anmeldung geöffnet. Speichere einen Screenshot des QR-Codes und wähle ihn hier aus. Das Bild wird nur in deinem Browser gelesen.</p>
 <label>Screenshot mit QR-Code<input id="qr-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
@@ -61,8 +70,14 @@
  </div><details><summary>Gmail mit dem Dashboard verbinden</summary><ol>
 <li>Öffne das Dashboard unter einem HTTPS-Hostnamen. Im Heimnetz reicht eine private Verbindung zu diesem Hostnamen.</li>
 <li>Aktiviere die Gmail API in deinem Google-Cloud-Projekt und registriere die HTTPS-Adresse mit dem Pfad <code>/api/gmail/callback</code>.</li>
-<li>Hinterlege den Google-Zugang im CT und erstelle in Gmail das Label „TikTok-Bot“. Danach erscheint hier „Mit Google verbinden“. <a href="https://github.com/jonascool19-pixel/TikTok-Bot#optionales-gmail-postfach" target="_blank" rel="noreferrer">Konfigurationswerte anzeigen</a>.</li>
-</ol></details></div>
+<li>Lege in Gmail das Label „TikTok-Bot“ an und weise es deinen TikTok-Mails per Filter zu. Ergänze die folgenden Werte in <code>/etc/tiktok-bot.env</code> und starte den Bot-Dienst neu. Den Schlüssel erzeugst du mit <code>openssl rand -hex 32</code>.</li>
+</ol><pre>BOT_SECURE_COOKIE=1
+BOT_GMAIL_REDIRECT_URI=https://DEIN-HOST/api/gmail/callback
+BOT_GMAIL_ADDRESS=DEIN_BOTKONTO@gmail.com
+BOT_GMAIL_CLIENT_ID=DEINE_CLIENT_ID
+BOT_GMAIL_CLIENT_SECRET=DEIN_CLIENT_SECRET
+BOT_GMAIL_KEY=DEIN_64_STELLIGER_HEX_SCHLUESSEL
+BOT_GMAIL_LABEL=TikTok-Bot</pre></details></div>
 <form id="mail-form" hidden><label>Admin-Passwort erneut eingeben<input type="password" name="password" autocomplete="current-password" required></label>
 <div class="actions"><button value="start" id="mail-connect">Mit Google verbinden (für Code-Abruf)</button><button value="unlock" id="mail-unlock">Postfach für 2 Minuten öffnen</button><button value="disconnect" id="mail-disconnect" class="secondary">Verbindung trennen</button></div></form>
 <div id="mail-inbox" hidden><div class="actions"><button id="mail-refresh" class="secondary">Nachrichten neu laden</button><button id="mail-lock" class="secondary">Postfach sperren</button></div>
