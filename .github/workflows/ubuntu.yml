@@ -34,7 +34,7 @@ jobs:
           else
             (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-install.out")
           fi
-          port=$(sed -nE 's/^Environment=BOT_PORT=([0-9]+)$/\1/p' /etc/systemd/system/tiktok-bot.service)
+          port=$(sudo sed -nE 's/^Environment=BOT_PORT=([0-9]+)$/\1/p' /etc/systemd/system/tiktok-bot.service)
           test "$port" -ge 1024
           curl --fail --silent "http://127.0.0.1:$port/health"
           export TEST_BOT_PORT="$port"
@@ -49,7 +49,7 @@ jobs:
           PY
           (umask 077; sudo bash install.sh --skip-os-upgrade > "$RUNNER_TEMP/tiktok-reinstall.out")
           grep -q 'Bestehendes Passwort verwenden' "$RUNNER_TEMP/tiktok-reinstall.out"
-          grep -Fxq "Environment=BOT_PORT=$port" /etc/systemd/system/tiktok-bot.service
+          sudo grep -Fxq "Environment=BOT_PORT=$port" /etc/systemd/system/tiktok-bot.service
           sudo rm -f "$RUNNER_TEMP/tiktok-install.out"
       - name: Show installer diagnostics on failure
         if: failure()
