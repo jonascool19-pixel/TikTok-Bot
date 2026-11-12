@@ -127,6 +127,9 @@ function status() {
   $('#status').textContent = state.status;
   const profileAvailable = state.profileLogin && location.protocol === 'https:';
   $('#tiktok-profile').hidden = !profileAvailable;
+  const qrAvailable = state.eulerLogin && location.protocol === 'https:';
+  $('#tiktok-euler').hidden = !qrAvailable;
+  $('#tiktok-euler-help').hidden = qrAvailable;
   $('#tiktok-profile-help').hidden = profileAvailable;
   $('#account-status').textContent = (state.botDisplayName ? 'TikTok-Profil: ' + state.botDisplayName + '. ' : '') +
     (state.connectedAccount ? 'Bot-Sitzung für den Versand hinterlegt.' : 'Keine Bot-Sitzung für den Versand hinterlegt.') +
@@ -248,6 +251,10 @@ click('#logout', async () => { await api('logout', {}); await load(); notice('')
 click('#change-password', async () => { show('password'); window.scrollTo(0, 0); });
 click('#tiktok-profile', async () => {
   const { url } = await api('tiktok/profile/start', {});
+  window.location.assign(url);
+});
+click('#tiktok-euler', async () => {
+  const { url } = await api('tiktok/euler/start', {});
   window.location.assign(url);
 });
 submit('#mail-form', async (event) => {
@@ -382,6 +389,12 @@ setInterval(async () => {
 await load().catch((error) => notice(error.message, true));
 const mailResult = new URLSearchParams(window.location.search).get('gmail');
 const tiktokResult = new URLSearchParams(window.location.search).get('tiktok');
+const eulerResult = new URLSearchParams(window.location.search).get('euler');
+if (eulerResult) {
+  history.replaceState(null, '', '/#konto');
+  showPage();
+  notice(eulerResult === 'connected' ? 'Bot-Konto für den LIVE-Chat verbunden.' : 'QR-Anmeldung fehlgeschlagen. Prüfe das Fehlerlog.', eulerResult !== 'connected');
+}
 if (mailResult) {
   history.replaceState(null, '', '/#postfach');
   showPage();

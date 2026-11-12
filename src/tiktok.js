@@ -108,5 +108,5 @@ export function makeTikTok({ event, status, log }) {
     }
   }
 
-  return { configure, send, online: () => online };
+  return { configure, send, online: () => online, room: () => online ? connection?.roomId : undefined };
 }

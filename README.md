@@ -7,7 +7,7 @@ Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfän
 Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
 
 ~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.9/install.sh -o "$installer" && bash "$installer"
+installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.10/install.sh -o "$installer" && bash "$installer"
 ~~~
 
 Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
@@ -23,6 +23,25 @@ Falls im CT curl fehlt, installiere es zunächst mit apt-get update && apt-get i
 5. Öffne die Wiedergabeseite auf einem Gerät im Heimnetz und aktiviere die Ausgabe. Für das Publikum muss dieser Ton in den Audiomix deines Streaming-Setups gelangen. Beim Streaming vom Handy hängt das von deiner Audiohardware ab.
 
 Für natürliche lokale Sprachausgabe stehen Thorsten, Kerstin und Amy (Piper) zur Auswahl. Weitere Sprachen und Stimmeffekte laufen über eSpeak NG. Du kannst stattdessen eigene Audioclips für Ereignisse hinterlegen. Geschenke können einen gesprochenen oder geschriebenen Dank auslösen. Begrüßungen erfolgen nur für tatsächlich empfangene Beitrittsereignisse und haben eine Sendepause. Feste Chatantworten benötigen kein Sprachmodell. Für freie Antworten kannst du einen OpenAI-kompatiblen Chat-Completions-Endpunkt konfigurieren. Ausgewählte Texte gehen dann an diesen Dienst. Meldet sich der Creator im Chat, verwirft der Bot die noch wartenden Antworten.
+
+## Bot-Konto per QR-Code verbinden
+
+Die QR-Anmeldung über Euler Stream übernimmt den Bot-Namen und verbindet das Konto für den LIVE-Chat. Sie benötigt eine einmalige Einrichtung pro Installation:
+
+1. Öffne das Dashboard über seinen HTTPS-Hostnamen. Richte bei Euler Stream einen OAuth-Client ein und registriere `https://DEIN-HOST/api/tiktok/euler/callback`. Der Client benötigt die Freigaben `user:info` und `webcast:chat`.
+2. Ergänze die Datei `/etc/tiktok-bot.env` (nur für root lesbar):
+
+~~~dotenv
+BOT_SECURE_COOKIE=1
+BOT_EULER_CLIENT_ID=DEINE-CLIENT-ID
+BOT_EULER_CLIENT_SECRET=DEIN-CLIENT-SECRET
+BOT_EULER_REDIRECT_URI=https://DEIN-HOST/api/tiktok/euler/callback
+BOT_EULER_VAULT_KEY=DEIN-ZUFAELLIGER-64-STELLIGER-HEX-SCHLUESSEL
+~~~
+
+3. Erzeuge den Schlüssel mit `openssl rand -hex 32` und starte danach den Bot-Dienst neu. Hinterlege deinen Creator-Namen. Klicke auf **Bot-Konto per QR-Code verbinden** und bestätige die Anmeldung in TikTok mit deinem separaten Bot-Konto.
+
+Der Bot speichert die Verbindung verschlüsselt und erneuert den Zugriff bei Bedarf. Nach Ablauf des Refresh-Tokens musst du das Konto erneut verbinden. **Bot-Sitzung entfernen** löscht die lokale Verbindung. Die Freigabe kannst du zusätzlich bei Euler Stream widerrufen. Der Dashboard-Export enthält diese OAuth-Verbindung nicht. [Euler Stream OAuth](https://www.eulerstream.com/docs/oauth) · [Versandberechtigung](https://www.eulerstream.com/docs/oauth/scopes)
 
 ## TikTok-Profilname per Login Kit
 
