@@ -11,6 +11,7 @@ internal sealed class LiveComments : UserControl
     private readonly ListBox history = new ListBox { Dock = DockStyle.Fill, AccessibleName = "LIVE-Kommentare" };
     private readonly CheckBox read = new CheckBox { Text = "Kommentare vorlesen", AutoSize = true };
     private readonly ComboBox voice = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, AccessibleName = "Stimme" };
+    private readonly ComboBox style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135, AccessibleName = "Stimmeffekt" };
     private readonly NumericUpDown volume = new NumericUpDown { Value = 75, Maximum = 100, Width = 55, AccessibleName = "Lautstärke" };
     private readonly Timer timer = new Timer { Interval = 2500 };
     private readonly JavaScriptSerializer json = new JavaScriptSerializer();
@@ -48,7 +49,9 @@ internal sealed class LiveComments : UserControl
     {
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         var test = new Button { Text = "Stimme testen", AutoSize = true };
-        toolbar.Controls.AddRange(new Control[] { read, voice, new Label { Text = "Lautstärke %", AutoSize = true }, volume, test });
+        style.Items.AddRange(new object[] { "Original", "Cartoon · hoch", "Cartoon · tief" });
+        style.SelectedIndex = 0;
+        toolbar.Controls.AddRange(new Control[] { read, voice, style, new Label { Text = "Lautstärke %", AutoSize = true }, volume, test });
         Controls.AddRange(new Control[] { history, status, toolbar });
         timer.Tick += Poll;
         read.CheckedChanged += delegate { if (!read.Checked) StopSpeech(); };
@@ -148,7 +151,16 @@ internal sealed class LiveComments : UserControl
         {
             speech.SelectVoice((string)voice.SelectedItem);
             speech.Volume = (int)volume.Value;
-            speech.SpeakAsync(pending.Dequeue());
+            var text = pending.Dequeue();
+            if (style.SelectedIndex == 0) speech.SpeakAsync(text);
+            else
+            {
+                var pitch = style.SelectedIndex == 1 ? "high" : "low";
+                var rate = style.SelectedIndex == 1 ? "fast" : "slow";
+                speech.SpeakSsmlAsync("<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='" +
+                    speech.Voice.Culture.Name + "'><prosody pitch='" + pitch + "' rate='" + rate + "'>" +
+                    System.Security.SecurityElement.Escape(text) + "</prosody></speak>");
+            }
             speaking = true;
         }
         catch (InvalidOperationException) { status.Text = "Sprachausgabe nicht verfügbar."; }

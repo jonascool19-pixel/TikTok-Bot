@@ -27,6 +27,9 @@ internal sealed class BotWindow : Form
     private readonly TextBox room = new TextBox { Width = 275, AccessibleName = "@Name oder LIVE-Link" };
     private readonly Button open = new Button { Text = "LIVE öffnen", AutoSize = true, Enabled = false };
     private readonly Button login = new Button { Text = "Bot-Konto anmelden", AutoSize = true, Enabled = false };
+    private readonly Label account = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Bot-Konto: noch nicht erkannt" };
+    private readonly Timer accountTimer = new Timer { Interval = 4000 };
+    private bool checkingAccount;
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
     private readonly bool smokeTest;
     private ChatReplies replyDialog;
@@ -44,7 +47,7 @@ internal sealed class BotWindow : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1180, 820);
-        MinimumSize = new Size(790, 430);
+        MinimumSize = new Size(900, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
         var replies = new Button { Text = "Chatantworten testen", AutoSize = true };
@@ -65,7 +68,19 @@ internal sealed class BotWindow : Form
             };
             dialog.Show(this);
         };
-        toolbar.Controls.AddRange(new Control[] { room, open, login, replies });
+        var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
+        profile.Click += delegate
+        {
+            var target = LiveAddress(room.Text);
+            if (target == null)
+            {
+                status.Text = "Gib einen @Namen oder einen vollständigen TikTok-LIVE-Link ein.";
+                return;
+            }
+            browser.CoreWebView2.Navigate(target.Substring(0, target.Length - "/live".Length));
+        };
+        open.EnabledChanged += delegate { profile.Enabled = open.Enabled; };
+        toolbar.Controls.AddRange(new Control[] { room, open, profile, login, replies });
         var tabs = new TabControl { Dock = DockStyle.Fill };
         var liveTab = new TabPage("TikTok LIVE");
         liveTab.Controls.Add(browser);
@@ -74,7 +89,7 @@ internal sealed class BotWindow : Form
         var musicTab = new TabPage("Musik");
         musicTab.Controls.Add(new MusicQueue { Dock = DockStyle.Fill });
         tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab });
-        Controls.AddRange(new Control[] { tabs, status, toolbar });
+        Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         AcceptButton = open;
         open.Click += delegate
         {
@@ -134,15 +149,37 @@ internal sealed class BotWindow : Form
             }
 
             core.NavigationStarting += delegate { status.Text = "Seite wird geladen …"; };
-            core.NavigationCompleted += (source, result) =>
+            core.NavigationCompleted += async (source, result) =>
             {
-                if (result.IsSuccess && result.HttpStatusCode < 400)
+                if (result.HttpStatusCode == 404)
+                    status.Text = "TikTok hat diese Seite nicht gefunden. Prüfe den @Namen.";
+                else if (result.IsSuccess && result.HttpStatusCode < 400)
+                {
                     status.Text = "TikTok-Seite geladen.";
+                    var address = core.Source;
+                    var handle = Regex.Match(address, @"\Ahttps://www\.tiktok\.com/(@[a-zA-Z0-9_.]{1,64})/?(?:[?#].*)?\z");
+                    if (handle.Success)
+                    {
+                        try
+                        {
+                            var title = await core.ExecuteScriptAsync("document.querySelector('[data-e2e=user-title]')?.textContent.trim() ?? null");
+                            if (IsDisposed || core.Source != address) return;
+                            var expected = handle.Groups[1].Value;
+                            status.Text = title.Equals("\"" + expected.TrimStart('@') + "\"", StringComparison.OrdinalIgnoreCase) ||
+                                title.Equals("\"" + expected + "\"", StringComparison.OrdinalIgnoreCase)
+                                ? "TikTok-Profil bestätigt: " + expected
+                                : "TikTok-Profil konnte nicht eindeutig bestätigt werden.";
+                        }
+                        catch (InvalidOperationException) { }
+                    }
+                }
                 else
                     Report("Seite konnte nicht geladen werden.", result.WebErrorStatus + ", HTTP " + result.HttpStatusCode);
             };
             core.ProcessFailed += (source, result) => Report("Browseransicht ausgefallen. Starte die App neu.", result.ProcessFailedKind.ToString());
             comments.Attach(core);
+            accountTimer.Tick += CheckAccount;
+            accountTimer.Start();
             open.Enabled = login.Enabled = true;
             status.Text = "Öffne deinen LIVE oder melde das Bot-Konto an.";
         }
@@ -152,6 +189,40 @@ internal sealed class BotWindow : Form
             Report("WebView2 konnte nicht gestartet werden. Prüfe die installierte WebView2 Runtime.", error.GetType().Name);
             if (smokeTest) Close();
         }
+    }
+
+    private async void CheckAccount(object sender, EventArgs args)
+    {
+        var core = browser.CoreWebView2;
+        if (checkingAccount || core == null) return;
+        Uri page;
+        if (!Uri.TryCreate(core.Source, UriKind.Absolute, out page) ||
+            page.Scheme != "https" || page.Host != "www.tiktok.com" || !page.IsDefaultPort)
+        {
+            account.Text = "Bot-Konto: noch nicht erkannt";
+            return;
+        }
+        checkingAccount = true;
+        try
+        {
+            var result = await core.ExecuteScriptAsync(
+                @"(() => {
+                    if (location.origin !== 'https://www.tiktok.com') return null;
+                    const link = document.querySelector('[data-e2e=""profile-icon""] a[href^=""/@""], a[data-e2e=""profile-icon""][href^=""/@""], a[data-e2e=""profile-link""][href^=""/@""]');
+                    return link ? link.getAttribute('href').split(/[/?#]/)[1] : null;
+                })()");
+            if (IsDisposed) return;
+            var handle = Regex.Match(result, @"\A""(@[a-zA-Z0-9_.]{1,64})""\z");
+            account.Text = handle.Success ? "Bot-Konto: " + handle.Groups[1].Value : "Bot-Konto: noch nicht erkannt";
+        }
+        catch (InvalidOperationException) { if (!IsDisposed) account.Text = "Bot-Konto: noch nicht erkannt"; }
+        finally { checkingAccount = false; }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) accountTimer.Dispose();
+        base.Dispose(disposing);
     }
 
     private void Report(string message, string details)

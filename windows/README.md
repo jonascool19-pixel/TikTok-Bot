@@ -35,3 +35,9 @@ In der Windows-EXE öffnet **Chatantworten testen** die Vorschau für freie Antw
 Unter **Kommentare und Stimme** zeigt die App neu erkannte Textkommentare aus der geöffneten TikTok-LIVE-Seite an. Du kannst eine installierte Windows-Stimme wählen, die Lautstärke einstellen und die Sprachausgabe testen. Wenn du im geöffneten Antwortfenster **Antwortvorschläge aus dem LIVE-Chat** aktivierst, sendet die App höchstens alle zwölf Sekunden einen neu erkannten Kommentar an den eingetragenen Modell-Endpunkt. Vorschläge erscheinen im Antwortfenster. Der Kommentarleser wurde mit einer lokalen Testseite auf neue und doppelt gelesene Einträge geprüft. Ein aktiver LIVE steht für den Integrationstest noch aus.
 
 Unter **Musik** kannst du lokale Audiodateien in die Warteschlange laden, abspielen, überspringen oder entfernen und die Lautstärke einstellen. Die automatische Zuordnung von Zuschauerwünschen zur Musikbibliothek steht noch aus.
+
+Die Spotify-Schaltflächen steuern eine aktive Spotify-Desktop-Sitzung über die Windows-Mediensteuerung. Starte in Spotify einen Titel und wähle **Spotify prüfen**. Wiedergabe/Pause und Titelsprünge betreffen die Spotify-App. Die lokale Warteschlange bleibt separat.
+
+**Profil öffnen** zeigt das zum eingegebenen @Namen oder LIVE-Link gehörende Profil an. Die Statuszeile meldet, wenn TikTok den Namen auf der Profilseite bestätigt oder HTTP 404 zurückgibt. Wenn TikTok das Profil nicht eindeutig ausweist, bleibt die Prüfung offen. Die Anzeige **Bot-Konto** übernimmt den öffentlichen @Namen aus der Profilnavigation der angemeldeten TikTok-Sitzung, sobald er erkennbar ist.
+
+Die Stimmprofile **Cartoon · hoch** und **Cartoon · tief** verändern Tonhöhe und Tempo der gewählten Windows-Stimme. Wie stark der Effekt klingt, hängt von der Stimme ab.

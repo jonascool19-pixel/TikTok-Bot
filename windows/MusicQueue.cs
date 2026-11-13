@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 using System.Windows.Media;
+using System.Threading.Tasks;
 
 internal sealed class MusicQueue : UserControl
 {
@@ -9,6 +11,7 @@ internal sealed class MusicQueue : UserControl
     private readonly ListBox queue = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwarteschlange" };
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 28, Text = "Keine Wiedergabe" };
     private bool playing;
+    private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
 
     internal MusicQueue()
     {
@@ -34,7 +37,45 @@ internal sealed class MusicQueue : UserControl
             status.Text = "Datei konnte nicht abgespielt werden. Wähle Abspielen für den nächsten Titel.";
         };
         queue.DisplayMember = "Name";
-        Controls.AddRange(new Control[] { queue, status, tools });
+        var spotify = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(6) };
+        AddButton(spotify, "Spotify prüfen", () => ControlSpotify(spotify, "Status"));
+        AddButton(spotify, "Spotify: Wiedergabe / Pause", () => ControlSpotify(spotify, "Toggle"));
+        AddButton(spotify, "Vorheriger Titel", () => ControlSpotify(spotify, "Previous"));
+        AddButton(spotify, "Nächster Titel", () => ControlSpotify(spotify, "Next"));
+        Controls.AddRange(new Control[] { queue, status, spotify, spotifyStatus, tools });
+    }
+
+    private async void ControlSpotify(Control buttons, string action)
+    {
+        buttons.Enabled = false;
+        try
+        {
+            var script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SpotifyControl.ps1");
+            var shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+            var result = await Task.Run(() =>
+            {
+                using (var process = Process.Start(new ProcessStartInfo(shell, "-NoProfile -NonInteractive -File \"" + script + "\" -Action " + action)
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }))
+                {
+                    if (process.WaitForExit(8000)) return process.ExitCode;
+                    process.Kill();
+                    return 4;
+                }
+            });
+            if (IsDisposed) return;
+            switch (result)
+            {
+                case 0: spotifyStatus.Text = action == "Status" ? "Spotify Desktop verbunden." : "Spotify hat den Befehl angenommen."; break;
+                case 2: spotifyStatus.Text = "Starte Spotify Desktop und spiele dort einen Titel an."; break;
+                case 3: spotifyStatus.Text = "Spotify unterstützt diesen Befehl für den aktuellen Titel nicht."; break;
+                default: spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar."; break;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception) { if (!IsDisposed) spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar."; }
+        finally { if (!IsDisposed) buttons.Enabled = true; }
     }
 
     private static void AddButton(Control tools, string caption, Action action)
