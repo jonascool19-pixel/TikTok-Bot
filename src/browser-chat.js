@@ -43,6 +43,7 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     opening = (async () => {
       if (!context) {
         context = await engine.launchPersistentContext(join(directory, 'tiktok-browser'), {
+          channel: 'chromium',
           viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
         });
         context.once('close', () => { context = undefined; page = undefined; ready = false; });
