@@ -90,7 +90,7 @@ here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
 if [[ -f "$here/package-lock.json" && -f "$here/src/server.js" ]]; then
   source_dir=$here
 else
-  ref=v0.1.29
+  ref=v0.1.30
   curl --fail --silent --show-error --location --retry 3 \
     "https://codeload.github.com/jonascool19-pixel/TikTok-Bot/tar.gz/refs/tags/$ref" -o "$tmp/source.tgz"
   mkdir "$tmp/source"
@@ -101,7 +101,7 @@ mkdir "$tmp/app"
 cp "$source_dir/package.json" "$source_dir/package-lock.json" "$tmp/app/"
 cp -R "$source_dir/src" "$source_dir/web" "$tmp/app/"
 (cd "$tmp/app" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
-PLAYWRIGHT_BROWSERS_PATH="$base/playwright" node "$tmp/app/node_modules/playwright/cli.js" install --with-deps --no-shell chromium
+PLAYWRIGHT_BROWSERS_PATH="$base/playwright" node "$tmp/app/node_modules/playwright/cli.js" install --with-deps firefox
 chmod -R a+rX "$base/playwright"
 chmod -R a+rX "$tmp/app"
 target="$base/versions/$(date -u +%Y%m%d%H%M%S)-$$"

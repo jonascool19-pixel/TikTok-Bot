@@ -1,10 +1,10 @@
-import { chromium } from 'playwright';
+import { firefox } from 'playwright';
 import { join } from 'node:path';
 
 const host = 'https://www.tiktok.com';
 const composer = '[data-e2e="live-chat-input-container"] [contenteditable="true"], [data-e2e="live-chat-input-container"] [contenteditable="plaintext-only"], [data-e2e="live-chat-input-container"] textarea';
 const profile = '[data-e2e="profile-icon"] a[href^="/@"], a[data-e2e="profile-icon"][href^="/@"], a[data-e2e="profile-link"][href^="/@"]';
-export function browserChat(directory, { event, status, log, traffic = () => {} }, engine = chromium) {
+export function browserChat(directory, { event, status, log, traffic = () => {} }, engine = firefox) {
   let context, page, creator, timer, opening, working = false, login = false;
   let ready = false, lastSent = 0, lastNavigation = 0;
   const reportedLoginStatuses = new Set();
@@ -46,9 +46,8 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     if (opening) return opening;
     opening = (async () => {
       if (!context) {
-        context = await engine.launchPersistentContext(join(directory, 'tiktok-browser'), {
-          channel: 'chromium',
-          viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
+        context = await engine.launchPersistentContext(join(directory, 'tiktok-firefox'), {
+          viewport: { width: 1000, height: 720 },
         });
         context.once('close', () => { context = undefined; page = undefined; ready = false; });
         context.on('request', (request) => {
