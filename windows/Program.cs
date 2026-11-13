@@ -88,7 +88,9 @@ internal sealed class BotWindow : Form
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
         musicTab.Controls.Add(new MusicQueue { Dock = DockStyle.Fill });
-        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab });
+        var updatesTab = new TabPage("Updates");
+        updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
+        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         AcceptButton = open;
         open.Click += delegate

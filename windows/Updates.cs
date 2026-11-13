@@ -1,0 +1,114 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+internal sealed class Updates : UserControl
+{
+    private const string Repo = "jonascool19-pixel/TikTok-Bot";
+    private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromSeconds(45), MaxResponseContentBufferSize = 32 * 1024 * 1024 };
+    private readonly Label status = new Label { Dock = DockStyle.Top, Height = 44 };
+    private readonly Button check = new Button { Text = "Nach Updates suchen", AutoSize = true };
+    private readonly Button install = new Button { Text = "Update installieren", AutoSize = true, Enabled = false };
+    private Asset available;
+    private readonly Version current;
+
+    static Updates() { Client.DefaultRequestHeaders.UserAgent.ParseAdd("TikTok-Bot-Windows"); }
+
+    internal Updates()
+    {
+        current = typeof(Updates).Assembly.GetName().Version;
+        status.Text = "Installierte Version: " + current.ToString(3);
+        var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
+        tools.Controls.AddRange(new Control[] { check, install });
+        Controls.AddRange(new Control[] { status, tools });
+        check.Click += async delegate { await Check(); };
+        install.Click += async delegate { await Install(); };
+    }
+
+    private async Task Check()
+    {
+        check.Enabled = install.Enabled = false;
+        available = null;
+        status.Text = "Suche nach einem Windows-Update …";
+        try
+        {
+            var json = await Client.GetStringAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=50");
+            var releases = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Deserialize<Release[]>(json);
+            var latest = current;
+            foreach (var release in releases)
+            {
+                Version version;
+                if (release.draft || release.prerelease || release.tag_name == null ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(release.tag_name, @"\Awindows-v\d+\.\d+\.\d+\z") ||
+                    !Version.TryParse(release.tag_name.Substring(9) + ".0", out version) || version <= latest) continue;
+                var url = "https://github.com/" + Repo + "/releases/download/" + release.tag_name + "/TikTok-Bot-Setup.exe";
+                foreach (var asset in release.assets ?? new Asset[0])
+                {
+                    if (asset.browser_download_url != url || asset.digest == null ||
+                        !System.Text.RegularExpressions.Regex.IsMatch(asset.digest, @"\Asha256:[a-fA-F0-9]{64}\z")) continue;
+                    available = asset;
+                    latest = version;
+                    break;
+                }
+            }
+            status.Text = available == null ? "Kein neueres Windows-Update veröffentlicht. Installiert: " + current.ToString(3)
+                : "Windows-Update " + latest.ToString(3) + " verfügbar.";
+            install.Enabled = available != null;
+        }
+        catch (HttpRequestException) { status.Text = "GitHub ist nicht erreichbar oder der Zugriff fehlt."; }
+        catch (OperationCanceledException) { status.Text = "Die Updatesuche hat zu lange gedauert."; }
+        catch (ArgumentException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }
+        catch (InvalidOperationException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }
+        finally { check.Enabled = true; }
+    }
+
+    private async Task Install()
+    {
+        var asset = available;
+        if (asset == null) return;
+        check.Enabled = install.Enabled = false;
+        status.Text = "Setup wird geladen und geprüft …";
+        try
+        {
+            var bytes = await Client.GetByteArrayAsync(asset.browser_download_url);
+            using (var sha = SHA256.Create())
+                if (!("sha256:" + BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", ""))
+                    .Equals(asset.digest, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException();
+            if (IsDisposed) return;
+            var folder = Path.Combine(Path.GetTempPath(), "TikTokBot-Update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
+            File.WriteAllBytes(file, bytes);
+            var installedPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+            using (var setup = Process.Start(new ProcessStartInfo(file, "/DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
+            FindForm().Close();
+        }
+        catch (HttpRequestException) { status.Text = "Das Setup konnte nicht geladen werden."; }
+        catch (OperationCanceledException) { status.Text = "Der Download hat zu lange gedauert."; }
+        catch (InvalidDataException) { status.Text = "Die Prüfsumme des Setups stimmt nicht."; }
+        catch (IOException) { status.Text = "Das Setup konnte nicht gespeichert werden."; }
+        catch (UnauthorizedAccessException) { status.Text = "Das Setup konnte nicht gespeichert werden."; }
+        catch (System.ComponentModel.Win32Exception) { status.Text = "Das Setup wurde nicht gestartet."; }
+        finally { if (!IsDisposed) check.Enabled = install.Enabled = true; }
+    }
+
+    private sealed class Release
+    {
+        public string tag_name { get; set; }
+        public bool draft { get; set; }
+        public bool prerelease { get; set; }
+        public Asset[] assets { get; set; }
+    }
+
+    private sealed class Asset
+    {
+        public string browser_download_url { get; set; }
+        public string digest { get; set; }
+    }
+}

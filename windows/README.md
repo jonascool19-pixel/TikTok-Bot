@@ -41,3 +41,7 @@ Die Spotify-Schaltflächen steuern eine aktive Spotify-Desktop-Sitzung über die
 **Profil öffnen** zeigt das zum eingegebenen @Namen oder LIVE-Link gehörende Profil an. Die Statuszeile meldet, wenn TikTok den Namen auf der Profilseite bestätigt oder HTTP 404 zurückgibt. Wenn TikTok das Profil nicht eindeutig ausweist, bleibt die Prüfung offen. Die Anzeige **Bot-Konto** übernimmt den öffentlichen @Namen aus der Profilnavigation der angemeldeten TikTok-Sitzung, sobald er erkennbar ist.
 
 Die Stimmprofile **Cartoon · hoch** und **Cartoon · tief** verändern Tonhöhe und Tempo der gewählten Windows-Stimme. Wie stark der Effekt klingt, hängt von der Stimme ab.
+
+**Eric Cartman**, **Peter Griffin** und **Stewie Griffin** sind englische Community-Stimmen von FakeYou. Bei Verwendung wird der gesprochene Text an FakeYou übertragen. Automatisches Vorlesen muss beim Wechsel zu einer Online-Stimme erneut aktiviert werden. Die Verfügbarkeit hängt von der Auslastung des Dienstes ab.
+
+Unter **Updates** sucht die App nach manuell veröffentlichten Windows-Releases dieses Repositorys. Ein Release benötigt den Versions-Tag `windows-vX.Y.Z` und die unveränderte `TikTok-Bot-Setup.exe` aus dem geprüften Workflow-Artefakt als Release-Datei. Die App vergleicht den SHA-256-Wert mit den GitHub-Metadaten und startet das Setup im bestehenden Installationsordner. Das lokale TikTok-Profil bleibt erhalten. Temporäre Eingaben und die laufende Musikwarteschlange werden bisher nur im Arbeitsspeicher gehalten.

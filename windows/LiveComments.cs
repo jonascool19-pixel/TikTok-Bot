@@ -21,6 +21,8 @@ internal sealed class LiveComments : UserControl
     private int generation;
     private bool polling;
     private bool speaking;
+    private System.Threading.CancellationTokenSource characterSpeech;
+    private int localVoiceCount;
     private readonly Queue<string> pending = new Queue<string>();
     internal event Action<string> CommentReceived;
 
@@ -69,7 +71,16 @@ internal sealed class LiveComments : UserControl
             };
         }
         catch (InvalidOperationException) { }
-        read.Enabled = test.Enabled = voice.Enabled = voice.Items.Count > 0;
+        localVoiceCount = voice.Items.Count;
+        foreach (var name in CharacterVoices.Names) voice.Items.Add(name + " · FakeYou (Englisch, online)");
+        if (voice.SelectedIndex < 0) voice.SelectedIndex = 0;
+        voice.SelectedIndexChanged += delegate
+        {
+            if (voice.SelectedIndex < localVoiceCount) return;
+            StopSpeech();
+            read.Checked = false;
+            status.Text = "Bei einer Online-Stimme gehen vorgelesene Texte an FakeYou.";
+        };
     }
 
     internal void Attach(CoreWebView2 core)
@@ -137,16 +148,36 @@ internal sealed class LiveComments : UserControl
 
     private void Speak(string text)
     {
-        if (speech == null || voice.SelectedItem == null) return;
+        if (voice.SelectedItem == null) return;
         if (pending.Count == 5) pending.Dequeue();
         pending.Enqueue(text);
         if (!speaking) SpeechCompleted();
     }
 
-    private void SpeechCompleted()
+    private async void SpeechCompleted()
     {
         speaking = false;
         if (pending.Count == 0 || IsDisposed) return;
+        if (voice.SelectedIndex >= localVoiceCount)
+        {
+            var text = pending.Dequeue();
+            var cancellation = new System.Threading.CancellationTokenSource();
+            characterSpeech = cancellation;
+            speaking = true;
+            try { await CharacterVoices.Speak(voice.SelectedIndex - localVoiceCount, text, (int)volume.Value, cancellation.Token); }
+            catch (OperationCanceledException) { if (!cancellation.IsCancellationRequested && !IsDisposed) status.Text = "FakeYou hat zu lange gebraucht."; }
+            catch (Exception error)
+            {
+                if (!IsDisposed) status.Text = "FakeYou-Stimme derzeit nicht verfügbar (" + error.GetType().Name + ").";
+            }
+            finally
+            {
+                characterSpeech = null;
+                cancellation.Dispose();
+                if (!IsDisposed) SpeechCompleted();
+            }
+            return;
+        }
         try
         {
             speech.SelectVoice((string)voice.SelectedItem);
@@ -170,7 +201,8 @@ internal sealed class LiveComments : UserControl
     private void StopSpeech()
     {
         pending.Clear();
-        if (speaking) speech.SpeakAsyncCancelAll();
+        if (characterSpeech != null) characterSpeech.Cancel();
+        else if (speaking && speech != null) speech.SpeakAsyncCancelAll();
     }
 
     protected override void Dispose(bool disposing)
@@ -178,6 +210,7 @@ internal sealed class LiveComments : UserControl
         if (disposing)
         {
             timer.Dispose();
+            if (characterSpeech != null) characterSpeech.Cancel();
             if (speech != null) speech.Dispose();
         }
         base.Dispose(disposing);

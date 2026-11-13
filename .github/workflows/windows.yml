@@ -41,6 +41,9 @@ jobs:
           Copy-Item -LiteralPath windows/SpotifyControl.ps1 -Destination $app
           $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
           $sources = @(Get-ChildItem -LiteralPath windows -Filter '*.cs' -File | Select-Object -ExpandProperty FullName)
+          $versionSource = Join-Path $env:RUNNER_TEMP 'TikTokBot-Version.cs'
+          '[assembly: System.Reflection.AssemblyVersion("{0}.0")]' -f $version | Set-Content -LiteralPath $versionSource
+          $sources += $versionSource
           $icon = (Resolve-Path windows/TikTok-Bot.ico).Path
           $wpf = Join-Path (Split-Path $csc) 'WPF'
           & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/win32icon:$icon" "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" "/reference:$wpf\System.Speech.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll $sources
@@ -62,7 +65,12 @@ jobs:
           $shortcut = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'TikTok-Bot.lnk'
           Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{0}"' -f $installed)
           if (Test-Path -LiteralPath $shortcut) { throw 'Desktop shortcut should be optional.' }
+          $profile = Join-Path $env:LOCALAPPDATA 'TikTok-Bot/WindowsPrototype/BotProfile'
+          New-Item -ItemType Directory -Force -Path $profile | Out-Null
+          $marker = Join-Path $profile 'installer-profile-test.txt'
+          Set-Content -LiteralPath $marker -Value 'existing local data'
           Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="{0}"' -f $installed)
+          if ((Get-Content -LiteralPath $marker) -ne 'existing local data') { throw 'Setup modified the local profile.' }
           $exe = Join-Path $installed 'TikTok-Bot.exe'
           if (!(Test-Path -LiteralPath $shortcut)) { throw 'Desktop shortcut is missing.' }
           $shell = New-Object -ComObject WScript.Shell
@@ -81,4 +89,5 @@ jobs:
           path: |
             TikTok-Bot-*-win-x64.zip
             TikTok-Bot-*-win-x64.zip.sha256
+            windows/build/TikTok-Bot-Setup.exe
           if-no-files-found: error
