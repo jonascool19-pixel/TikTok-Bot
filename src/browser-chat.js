@@ -14,10 +14,23 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     return job;
   };
   const roomUrl = () => host + '/@' + creator + '/live';
-  const trusted = () => {
-    const url = new URL(page.url());
-    return url.origin === host;
-  };
+  const trusted = (tab = page) => Boolean(tab && !tab.isClosed() && URL.parse(tab.url())?.origin === host);
+  function showLoginTab(tab) {
+    tab.on('popup', (popup) => {
+      if (!login || page !== tab) return;
+      const follow = () => {
+        if (login && page === tab && trusted(popup)) page = popup;
+      };
+      popup.on('framenavigated', (frame) => {
+        if (frame === popup.mainFrame()) follow();
+      });
+      popup.once('close', () => {
+        if (page === popup) page = tab.isClosed() ? undefined : tab;
+      });
+      showLoginTab(popup);
+      follow();
+    });
+  }
   const inRoom = () => trusted() && new URL(page.url()).pathname.replace(/\/$/, '').toLowerCase() === new URL(roomUrl()).pathname.toLowerCase();
   const account = async () => {
     const href = await page.locator(profile).first().getAttribute('href', { timeout: 1500 }).catch(() => null);
@@ -39,6 +52,7 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
         });
       }
       page = context.pages()[0] ?? await context.newPage();
+      showLoginTab(page);
     })();
     try { await opening; } finally { opening = undefined; }
   }
