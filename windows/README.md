@@ -20,4 +20,12 @@ powershell.exe -NoProfile -STA -File .\windows\Start-Prototype.ps1 -WebView2Sdk 
 - Geplant sind die eigene Kommentaransicht, Vorlesen, Geschenkansagen und Begrüßungen, Audioeinstellungen und Aufnahmen, lokale Musik mit Wunschliste, Sicherung der Einstellungen und Diagnose für Audio und Chatversand. Beim Handy-LIVE wird die PC-Audioausgabe über einen separaten Audioeingang geprüft.
 - Automatische Chatantworten benötigen einen unterstützten Sendeweg. Die öffentliche [TikTok-Entwicklerübersicht](https://developers.tiktok.com/) dokumentiert dafür derzeit keine LIVE-Chat-Schnittstelle.
 
-Der Windows-Build und die Veröffentlichung als EXE werden nach Abstimmung des GitHub-Actions-Ablaufs eingerichtet.
+## Windows-Installer
+
+Der Workflow **Windows installer** wird in GitHub Actions manuell für einen Versions-Tag wie `windows-v0.1.0` gestartet. GitHub setzt voraus, dass der Workflow auf dem Standardbranch verfügbar ist. Er baut einen x64-Installer, prüft Installation, App-Start und Deinstallation und stellt das ZIP und dessen SHA-256-Prüfsumme als Artefakt bereit. Das Setup installiert die App für den aktuellen Benutzer und legt einen Startmenü-Eintrag an. Auf dem Ziel-PC muss die WebView2 Runtime installiert sein.
+
+## Musik und freie Chatantworten
+
+- Ein lokaler Player soll Dateien aus deiner für den Stream freigegebenen Musikbibliothek abspielen. Ein Musikwunsch im Chat wird einem Titel aus dieser Bibliothek zugeordnet und landet in der Warteschlange.
+- Der Bot soll auf normale Nachrichten wie „Hey“ und „Wie heißt das Spiel?“ reagieren. Bei Fragen zum Spiel kann ein bildfähiges Modell einen aktuellen Ausschnitt des freigegebenen Spielfensters auswerten. Ein manuell hinterlegter Spieltitel dient als verlässliche Quelle. Ist der Titel unklar, kann der Bot kurz nachfragen.
+- Der automatische Versand setzt einen bestätigten, unterstützten TikTok-Sendeweg voraus. Antwortlogik und Bilderkennung lassen sich unabhängig davon testen.

@@ -1,0 +1,73 @@
+name: Windows installer
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Windows version tag, e.g. windows-v0.1.0'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm test
+      - name: Build and verify setup
+        shell: pwsh
+        env:
+          VERSION_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:VERSION_TAG -cnotmatch '^windows-v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw 'Expected a Windows version tag.'
+          }
+          $version = $env:VERSION_TAG.Substring(9)
+          $sdkVersion = '1.0.3595.46'
+          $zipPath = Join-Path $env:RUNNER_TEMP 'webview2.zip'
+          $sdk = Join-Path $env:RUNNER_TEMP 'webview2'
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$sdkVersion/microsoft.web.webview2.$sdkVersion.nupkg" -OutFile $zipPath
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $sdk
+          $app = (New-Item -ItemType Directory -Path windows/build/app -Force).FullName
+          $core = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.Core.dll'
+          $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
+          Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+          $source = (Resolve-Path windows/Program.cs).Path
+          & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" $source
+          if ($LASTEXITCODE -ne 0) { throw 'Application compilation failed.' }
+          $inno = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          & $inno "/DAppVersion=$version" windows/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+
+          function Invoke-CheckedProcess($file, $arguments) {
+            $process = Start-Process -FilePath $file -ArgumentList $arguments -WindowStyle Hidden -PassThru
+            if (!$process.WaitForExit(60000)) {
+              $process.Kill()
+              throw "Timed out: $file"
+            }
+            if ($process.ExitCode -ne 0) { throw "$file exited with code $($process.ExitCode)" }
+          }
+          $installer = (Resolve-Path windows/build/TikTok-Bot-Setup.exe).Path
+          $installed = Join-Path $env:RUNNER_TEMP 'TikTok-Bot-install-test'
+          Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{0}"' -f $installed)
+          Invoke-CheckedProcess (Join-Path $installed 'TikTok-Bot.exe') '--smoke-test'
+          Invoke-CheckedProcess (Join-Path $installed 'unins000.exe') '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+          if (Test-Path (Join-Path $installed 'TikTok-Bot.exe')) { throw 'Uninstall left the application installed.' }
+          $zip = "TikTok-Bot-$version-win-x64.zip"
+          Compress-Archive -LiteralPath $installer -DestinationPath $zip
+          "$( (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant() )  $zip" |
+            Set-Content -Encoding ascii "$zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TikTok-Bot-win-x64
+          path: |
+            TikTok-Bot-*-win-x64.zip
+            TikTok-Bot-*-win-x64.zip.sha256
+          if-no-files-found: error
