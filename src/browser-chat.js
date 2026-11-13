@@ -7,6 +7,7 @@ const profile = '[data-e2e="profile-icon"] a[href^="/@"], a[data-e2e="profile-ic
 export function browserChat(directory, { event, status, log, traffic = () => {} }, engine = chromium) {
   let context, page, creator, timer, opening, working = false, login = false;
   let ready = false, lastSent = 0, lastNavigation = 0;
+  const reportedLoginStatuses = new Set();
   let serial = Promise.resolve();
   const run = (work) => {
     const job = serial.then(work);
@@ -47,6 +48,18 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
           viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
         });
         context.once('close', () => { context = undefined; page = undefined; ready = false; });
+        context.on('response', (response) => {
+          if (!login) return;
+          const url = URL.parse(response.url());
+          const type = response.request().resourceType();
+          const code = response.status();
+          if (url?.protocol !== 'https:' || !/(^|\.)tiktok\.com$/.test(url.hostname) ||
+              !['document', 'xhr', 'fetch'].includes(type) || ![403, 429].includes(code) ||
+              reportedLoginStatuses.has(code)) return;
+          reportedLoginStatuses.add(code);
+          log('tiktok', 'TikTok-Anmeldeansicht: HTTP ' + code, { code });
+          status(code === 429 ? 'TikTok meldet eine Anfragebegrenzung (HTTP 429)' : 'TikTok hat eine Anfrage abgelehnt (HTTP 403)');
+        });
         context.on('requestfinished', (request) => {
           void request.sizes().then(({ requestHeadersSize, requestBodySize, responseHeadersSize, responseBodySize }) =>
             traffic(requestHeadersSize + requestBodySize, responseHeadersSize + responseBodySize)).catch(() => {});
@@ -116,10 +129,11 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     configure, online: () => ready,
     start: () => run(async () => {
       login = true;
+      reportedLoginStatuses.clear();
       ready = false;
+      status('TikTok-Anmeldung geöffnet');
       try { await open(); await page.goto(host + '/login', { waitUntil: 'domcontentloaded', timeout: 20000 }); }
       catch (error) { login = false; throw error; }
-      status('TikTok-Anmeldung geöffnet');
     }),
     screenshot: () => run(async () => {
       if (!login || !page || !trusted()) throw new Error('Anmeldung pausiert. Öffne die TikTok-Anmeldung erneut.');
