@@ -23,11 +23,13 @@ internal static class Program
 internal sealed class BotWindow : Form
 {
     private readonly WebView2 browser = new WebView2 { Dock = DockStyle.Fill };
+    private readonly LiveComments comments = new LiveComments { Dock = DockStyle.Fill };
     private readonly TextBox room = new TextBox { Width = 275, AccessibleName = "@Name oder LIVE-Link" };
     private readonly Button open = new Button { Text = "LIVE öffnen", AutoSize = true, Enabled = false };
     private readonly Button login = new Button { Text = "Bot-Konto anmelden", AutoSize = true, Enabled = false };
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
     private readonly bool smokeTest;
+    private ChatReplies replyDialog;
     private readonly string data;
     internal int ExitCode { get; private set; }
 
@@ -47,10 +49,31 @@ internal sealed class BotWindow : Form
         var replies = new Button { Text = "Chatantworten testen", AutoSize = true };
         replies.Click += delegate
         {
-            using (var dialog = new ChatReplies()) dialog.ShowDialog(this);
+            if (replyDialog != null)
+            {
+                replyDialog.Activate();
+                return;
+            }
+            var dialog = new ChatReplies();
+            replyDialog = dialog;
+            comments.CommentReceived += dialog.ConsiderLiveComment;
+            dialog.FormClosed += delegate
+            {
+                comments.CommentReceived -= dialog.ConsiderLiveComment;
+                replyDialog = null;
+            };
+            dialog.Show(this);
         };
         toolbar.Controls.AddRange(new Control[] { room, open, login, replies });
-        Controls.AddRange(new Control[] { browser, status, toolbar });
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        var liveTab = new TabPage("TikTok LIVE");
+        liveTab.Controls.Add(browser);
+        var chatTab = new TabPage("Kommentare und Stimme");
+        chatTab.Controls.Add(comments);
+        var musicTab = new TabPage("Musik");
+        musicTab.Controls.Add(new MusicQueue { Dock = DockStyle.Fill });
+        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab });
+        Controls.AddRange(new Control[] { tabs, status, toolbar });
         AcceptButton = open;
         open.Click += delegate
         {
@@ -89,17 +112,23 @@ internal sealed class BotWindow : Form
             core.Settings.AreHostObjectsAllowed = false;
             if (smokeTest)
             {
-                core.NavigationCompleted += delegate(object source, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs result)
+                core.NavigationCompleted += async (source, result) =>
                 {
-                    if (result.IsSuccess && core.DocumentTitle == "TikTok-Bot Smoke" &&
-                        Directory.Exists(browser.CreationProperties.UserDataFolder) &&
-                        LiveAddress("@creator") == "https://www.tiktok.com/@creator/live" &&
-                        LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
-                        LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null)
-                        ExitCode = 0;
-                    Close();
+                    try
+                    {
+                        if (result.IsSuccess && core.DocumentTitle == "TikTok-Bot Smoke" &&
+                            Directory.Exists(browser.CreationProperties.UserDataFolder) &&
+                            LiveAddress("@creator") == "https://www.tiktok.com/@creator/live" &&
+                            LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
+                            LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
+                            await LiveComments.VerifyReader(core))
+                            ExitCode = 0;
+                    }
+                    finally { Close(); }
                 };
-                core.NavigateToString("<title>TikTok-Bot Smoke</title>");
+                core.NavigateToString("<title>TikTok-Bot Smoke</title><div data-e2e='chat-room'>" +
+                    "<div data-e2e='chat-message'><b data-e2e='message-owner-name'>Zuschauer</b>" +
+                    "<span class='break-words align-middle'>Vorhandener Kommentar</span></div></div>");
                 return;
             }
 
@@ -112,6 +141,7 @@ internal sealed class BotWindow : Form
                     Report("Seite konnte nicht geladen werden.", result.WebErrorStatus + ", HTTP " + result.HttpStatusCode);
             };
             core.ProcessFailed += (source, result) => Report("Browseransicht ausgefallen. Starte die App neu.", result.ProcessFailedKind.ToString());
+            comments.Attach(core);
             open.Enabled = login.Enabled = true;
             status.Text = "Öffne deinen LIVE oder melde das Bot-Konto an.";
         }

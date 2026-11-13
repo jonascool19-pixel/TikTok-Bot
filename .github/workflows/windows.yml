@@ -39,8 +39,9 @@ jobs:
           $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
           Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
           $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-          $sources = @((Resolve-Path windows/Program.cs).Path, (Resolve-Path windows/ChatReplies.cs).Path)
-          & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll $sources
+          $sources = @(Get-ChildItem -LiteralPath windows -Filter '*.cs' -File | Select-Object -ExpandProperty FullName)
+          $wpf = Join-Path (Split-Path $csc) 'WPF'
+          & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" "/reference:$wpf\System.Speech.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll $sources
           if ($LASTEXITCODE -ne 0) { throw 'Application compilation failed.' }
           $inno = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
           & $inno "/DAppVersion=$version" windows/installer.iss

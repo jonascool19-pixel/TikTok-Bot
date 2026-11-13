@@ -25,7 +25,9 @@ internal sealed class ChatReplies : Form
     private readonly TextBox message = new TextBox { MaxLength = 500 };
     private readonly TextBox answer = new TextBox { ReadOnly = true, Multiline = true, Height = 68 };
     private readonly Button generate = new Button { Text = "Antwort testen", AutoSize = true };
+    private readonly CheckBox useLive = new CheckBox { Text = "Antwortvorschläge aus dem LIVE-Chat", AutoSize = true };
     private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
+    private DateTime nextLiveRequest;
 
     internal ChatReplies()
     {
@@ -42,6 +44,7 @@ internal sealed class ChatReplies : Form
         AddField(fields, "Aktuelles Spiel (optional)", game);
         AddField(fields, "Zuschauernachricht", message);
         AddField(fields, "Antwortvorschlag", answer);
+        fields.Controls.Add(useLive, 1, fields.RowCount++);
         fields.Controls.Add(generate, 1, fields.RowCount++);
         Controls.Add(fields);
         AcceptButton = generate;
@@ -92,6 +95,15 @@ internal sealed class ChatReplies : Form
         {
             if (!IsDisposed) generate.Enabled = true;
         }
+    }
+
+    internal void ConsiderLiveComment(string text)
+    {
+        if (!useLive.Checked || !generate.Enabled || DateTime.UtcNow < nextLiveRequest ||
+            string.IsNullOrWhiteSpace(endpoint.Text) || string.IsNullOrWhiteSpace(model.Text)) return;
+        nextLiveRequest = DateTime.UtcNow.AddSeconds(12);
+        message.Text = text;
+        Preview(this, EventArgs.Empty);
     }
 
     private void ShowEndpointError()
