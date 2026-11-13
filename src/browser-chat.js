@@ -110,9 +110,13 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
       if (!login || !page || !trusted()) throw new Error('Anmeldung pausiert. Öffne die TikTok-Anmeldung erneut.');
       return page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000, scale: 'css' });
     }),
-    input: ({ kind, x, y, text, key, value }) => run(async () => {
+    input: ({ kind, x, y, text, key, value, dx, dy }) => run(async () => {
       if (!login || !page || !trusted()) throw new Error('TikTok-Anmeldung ist nicht geöffnet');
-      if (kind === 'click' && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x < 1000 && y >= 0 && y < 720) {
+      const point = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x < 1000 && y >= 0 && y < 720;
+      if (kind === 'wheel' && point && [dx, dy].every((delta) => Number.isFinite(delta) && Math.abs(delta) <= 1500)) {
+        await page.mouse.move(x, y);
+        await page.mouse.wheel(dx, dy);
+      } else if (kind === 'click' && point) {
         const choices = await page.evaluate(({ x, y }) => {
           const select = document.elementFromPoint(x, y)?.closest('select');
           if (!select || select.disabled) return null;
@@ -129,7 +133,7 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
         await select.selectOption({ value }, { timeout: 2500 });
       } else if (kind === 'text' && typeof text === 'string' && text.length <= 300) {
         await page.keyboard.insertText(text);
-      } else if (kind === 'key' && ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'Control+a', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) {
+      } else if (kind === 'key' && ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'Control+a', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(key)) {
         await page.keyboard.press(key);
       } else throw new Error('Ungültige Eingabe');
       const focused = await page.evaluate(() => document.activeElement?.matches('input:not([type="button"]):not([type="submit"]), textarea, [contenteditable="true"]') ?? false);

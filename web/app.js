@@ -287,7 +287,7 @@ function sendBrowserInput(data) {
       choices.scrollIntoView({ block: 'nearest' });
     }
     $('#browser-input-status').textContent = result.focused ? 'TikTok-Eingabefeld aktiv. Du kannst jetzt tippen.' : '';
-    await updateBrowserView();
+    void updateBrowserView();
   });
   browserInput = task.catch((error) => { $('#browser-input-status').textContent = error.message; });
   return browserInput;
@@ -304,19 +304,31 @@ click('#browser-image', (event) => {
 $('#browser-image').addEventListener('keydown', (event) => {
   if (event.isComposing) return;
   const key = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' ? 'Control+a' : event.key;
-  const editing = ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key) || key === 'Control+a';
+  const editing = ['Tab', 'Enter', 'Backspace', 'Delete', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(key) || key === 'Control+a';
   if (editing || (!event.ctrlKey && !event.metaKey && !event.altKey && key.length === 1)) {
     event.preventDefault();
     void sendBrowserInput(editing ? { kind: 'key', key } : { kind: 'text', text: key });
   }
 });
-click('#browser-type', async () => {
-  const field = $('#browser-text');
-  const text = field.value;
-  field.value = '';
-  await sendBrowserInput({ kind: 'text', text });
+$('#browser-image').addEventListener('wheel', (event) => {
+  if (event.ctrlKey) return;
+  event.preventDefault();
+  const bounds = event.currentTarget.getBoundingClientRect();
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+  const clamp = (value) => Math.max(-1500, Math.min(1500, value));
+  void sendBrowserInput({
+    kind: 'wheel', x: (event.clientX - bounds.left) * 1000 / bounds.width,
+    y: (event.clientY - bounds.top) * 720 / bounds.height,
+    dx: clamp(event.deltaX * unit), dy: clamp(event.deltaY * unit),
+  });
+}, { passive: false });
+$('#browser-image').addEventListener('paste', (event) => {
+  const text = event.clipboardData?.getData('text/plain');
+  if (!text) return;
+  event.preventDefault();
+  if (text.length <= 300) void sendBrowserInput({ kind: 'text', text });
+  else $('#browser-input-status').textContent = 'Maximal 300 Zeichen pro Einfügevorgang.';
 });
-click('#browser-enter', () => sendBrowserInput({ kind: 'key', key: 'Enter' }));
 click('#browser-finish', async () => {
   await api('browser/finish', {});
   stopBrowserView();
