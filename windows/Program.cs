@@ -41,6 +41,7 @@ internal sealed class BotWindow : Form
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TikTok-Bot", "WindowsPrototype");
         browser.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = Path.Combine(data, "BotProfile") };
         Text = "TikTok-Bot";
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1180, 820);
         MinimumSize = new Size(790, 430);

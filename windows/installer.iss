@@ -9,6 +9,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=build
 OutputBaseFilename=TikTok-Bot-Setup
+SetupIconFile=TikTok-Bot.ico
 UninstallDisplayIcon={app}\TikTok-Bot.exe
 CloseApplications=yes
 
@@ -18,5 +19,9 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 [Files]
 Source: "build\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
+[Tasks]
+Name: "desktopicon"; Description: "Desktop-Symbol erstellen"; Flags: unchecked
+
 [Icons]
 Name: "{userprograms}\TikTok-Bot"; Filename: "{app}\TikTok-Bot.exe"
+Name: "{userdesktop}\TikTok-Bot"; Filename: "{app}\TikTok-Bot.exe"; Tasks: desktopicon
