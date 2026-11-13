@@ -8,6 +8,9 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
   let context, page, creator, timer, opening, working = false, login = false;
   let ready = false, lastSent = 0, lastNavigation = 0;
   const reportedLoginStatuses = new Set();
+  const loginRequests = new WeakMap();
+  let loginRun = 0;
+  let reportedLimit = false;
   let serial = Promise.resolve();
   const run = (work) => {
     const job = serial.then(work);
@@ -48,8 +51,21 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
           viewport: { width: 1000, height: 720 }, chromiumSandbox: true,
         });
         context.once('close', () => { context = undefined; page = undefined; ready = false; });
+        context.on('request', (request) => {
+          if (!login || request.method() !== 'POST') return;
+          const url = URL.parse(request.url());
+          if (url?.protocol === 'https:' && /(^|\.)tiktok\.com$/.test(url.hostname) &&
+              /\/(?:login|email_login|username_login|phone_login)(?:\/|$)/i.test(url.pathname)) {
+            loginRequests.set(request, { run: loginRun, started: performance.now() });
+          }
+        });
         context.on('response', (response) => {
           if (!login) return;
+          const attempt = loginRequests.get(response.request());
+          if (attempt?.run === loginRun) {
+            log('tiktok', 'TikTok-Anmeldeantwort nach ' + Math.round(performance.now() - attempt.started) + ' ms',
+              { code: response.status() });
+          }
           const url = URL.parse(response.url());
           const type = response.request().resourceType();
           const code = response.status();
@@ -104,7 +120,7 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
       ready = batch !== null;
       status(ready ? 'LIVE-Webchat verbunden' : 'Warte auf den LIVE-Webchat');
       for (const item of batch ?? []) event(item);
-    } catch (error) { ready = false; status('Browser-Verbindung fehlgeschlagen'); log('tiktok', 'Browser-Verbindung fehlgeschlagen', error); }
+    } catch (error) { ready = false; status('LIVE-Prüfung fehlgeschlagen'); log('tiktok', 'LIVE-Prüfung fehlgeschlagen', error); }
     finally { working = false; }
   }
 
@@ -129,6 +145,8 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     configure, online: () => ready,
     start: () => run(async () => {
       login = true;
+      loginRun++;
+      reportedLimit = false;
       reportedLoginStatuses.clear();
       ready = false;
       status('TikTok-Anmeldung geöffnet');
@@ -137,6 +155,15 @@ export function browserChat(directory, { event, status, log, traffic = () => {} 
     }),
     screenshot: () => run(async () => {
       if (!login || !page || !trusted()) throw new Error('Anmeldung pausiert. Öffne die TikTok-Anmeldung erneut.');
+      if (!reportedLimit) {
+        const limit = await page.evaluate(() =>
+          /höchst\w*\s*(?:anzahl|zahl)?\s*(?:an\s+)?(?:anmelde)?versuch|(?:anzahl|zahl)\s+(?:an\s+)?versuch\w*\s+erreicht|zu viele (?:anmelde)?versuche|too many (?:login )?attempts|maximum number of (?:login )?attempts/i
+            .test(document.body?.innerText ?? '')).catch(() => false);
+        if (limit) {
+          reportedLimit = true;
+          log('tiktok', 'TikTok-Anmeldung: Meldung zur Höchstzahl der Versuche sichtbar');
+        }
+      }
       return page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000, scale: 'css' });
     }),
     input: ({ kind, x, y, text, key, value, dx, dy }) => run(async () => {
