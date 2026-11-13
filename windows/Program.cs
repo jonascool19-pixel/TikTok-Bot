@@ -41,10 +41,15 @@ internal sealed class BotWindow : Form
         Text = "TikTok-Bot";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1180, 820);
-        MinimumSize = new Size(660, 430);
+        MinimumSize = new Size(790, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
-        toolbar.Controls.AddRange(new Control[] { room, open, login });
+        var replies = new Button { Text = "Chatantworten testen", AutoSize = true };
+        replies.Click += delegate
+        {
+            using (var dialog = new ChatReplies()) dialog.ShowDialog(this);
+        };
+        toolbar.Controls.AddRange(new Control[] { room, open, login, replies });
         Controls.AddRange(new Control[] { browser, status, toolbar });
         AcceptButton = open;
         open.Click += delegate
