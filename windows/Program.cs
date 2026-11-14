@@ -724,16 +724,41 @@ internal sealed class BotWindow : Form
                     }
                 }
                 if (!editor) return 'missing-editor';
-                if (!send) return 'missing-button';
+
                 if ((editor.innerText || '').replace(/[\u200B\uFEFF]/g, '').trim()) return 'draft';
                 editor.focus({ preventScroll: true });
                 const reply = " + json.Serialize(reply) + @";
                 if (document.activeElement !== editor) return 'focus';
                 if (!document.execCommand('insertText', false, reply) || (editor.innerText || '').trim() !== reply) return 'insert';
+                if (!send) return 'enter';
                 if (send.disabled || send.getAttribute('aria-disabled') === 'true') return 'disabled';
                 send.click();
                 return 'submitted';
             })()");
+            if (result == "\"enter\"")
+            {
+                if (IsDisposed || target != watchedRoom || !comments.ChatAvailable || !IsAllowedRoom(core.Source, target))
+                    return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
+                // Send a key to this WebView only. Web pages can ignore synthetic DOM keyboard events.
+                const string enter = "\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13";
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"text\":\"\\r\"," + enter + "}");
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\"," + enter + "}");
+                nextReplyTime = DateTime.UtcNow.AddSeconds(12);
+                await System.Threading.Tasks.Task.Delay(500);
+                if (IsDisposed || target != watchedRoom || !IsAllowedRoom(core.Source, target))
+                    return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
+                var cleared = await core.ExecuteScriptAsync(@"(() => {
+                    const editor = document.activeElement;
+                    return !!editor && editor.isContentEditable &&
+                        !(editor.innerText || '').replace(/[\u200B\uFEFF]/g, '').trim();
+                })()");
+                if (cleared == "true") result = "\"submitted\"";
+                else
+                {
+                    ErrorLog.Write("Chatantworten", "TikTok hat die Enter-Eingabe nicht bestätigt (enter-unconfirmed).");
+                    return fallback + "Versand per Enter nicht bestätigt. Prüfe den LIVE-Chat.";
+                }
+            }
             if (result == "\"submitted\"")
             {
                 nextReplyTime = DateTime.UtcNow.AddSeconds(12);
