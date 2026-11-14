@@ -13,6 +13,7 @@ internal sealed class YouTubeQueue : UserControl
     private readonly TextBox input = new TextBox { Width = 285, AccessibleName = "Videotitel oder YouTube-Link" };
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32 };
     private readonly AppTabs views = new AppTabs();
+    private readonly TabPage results = new TabPage("Suche");
     private readonly TabPage playback = new TabPage("Player");
     private readonly Timer timer = new Timer { Interval = 1500 };
     private string current;
@@ -111,7 +112,7 @@ internal sealed class YouTubeQueue : UserControl
         if (string.IsNullOrWhiteSpace(query)) return;
         wishSearch = false;
         var id = YouTubeMusicControl.VideoId(query.Trim());
-        views.SelectedIndex = 0;
+        views.SelectedTab = results;
         Navigate(search, id == null ? "https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query.Trim()) : Address(id));
     }
 

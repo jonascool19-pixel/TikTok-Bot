@@ -73,18 +73,27 @@ internal sealed class LiveComments : UserControl
     const root = document.querySelector('[data-e2e=""live-chat-container""], [data-e2e=""chat-room""]');
     if (!root) return [];
     const previous = window.__ttbGiftRows;
-    const seen = previous && previous.root === root ? previous.seen : new WeakSet();
+    const seen = previous && previous.root === root ? previous.seen : new WeakMap();
     window.__ttbGiftRows = {root, seen};
     const gifts = [];
-    for (const row of Array.from(root.querySelectorAll('[data-e2e=""gift-message""], [data-e2e=""live-gift-message""]')).slice(-100)) {
-        const sender = row.querySelector('[data-e2e=""gift-sender-name""], [data-e2e=""message-owner-name""]');
-        const gift = row.querySelector('[data-e2e=""gift-name""]');
-        if (!sender || !gift) continue;
+    const rowSelector = '[data-e2e=""gift-message""], [data-e2e=""live-gift-message""], [data-e2e=""gift-chat-message""], [data-e2e=""live-chat-gift""]';
+    const giftSelector = '[data-e2e=""gift-name""], [data-e2e=""gift-title""], [data-e2e=""live-gift-name""]';
+    const rows = new Set();
+    for (const marker of root.querySelectorAll(rowSelector + ', ' + giftSelector)) {
+        const row = marker.closest(rowSelector) || marker.closest('[data-e2e=""chat-message""]');
+        if (row && root.contains(row)) rows.add(row);
+    }
+    for (const row of Array.from(rows).slice(-100)) {
+        const sender = row.querySelector('[data-e2e=""gift-sender-name""], [data-e2e=""message-owner-name""], a[href^=""/@""]');
+        const gift = row.querySelector(giftSelector);
+        const icon = row.querySelector('img[data-e2e=""gift-icon""][alt], [data-e2e=""gift-image""] img[alt]');
+        if (!sender || (!gift && !icon)) continue;
         const name = sender.textContent.trim().slice(0,80);
-        const title = gift.textContent.trim().slice(0,80);
+        const title = (gift && gift.textContent.trim() || icon && icon.alt.trim() || '').slice(0,80);
         if (!name || !title) continue;
-        if (previous && previous.root === root && !seen.has(row)) gifts.push({Name: name, Title: title});
-        seen.add(row);
+        const key = JSON.stringify([name,title]);
+        if (previous && previous.root === root && seen.get(row) !== key) gifts.push({Name: name, Title: title});
+        seen.set(row,key);
     }
     return gifts;
 })()";
@@ -245,9 +254,13 @@ internal sealed class LiveComments : UserControl
             "\"<div data-e2e='gift-message'><b data-e2e='gift-sender-name'>Alex</b><span data-e2e='gift-name'>Rose</span></div>\");");
         var gifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
         var repeatedGifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
+        await core.ExecuteScriptAsync("document.querySelector('[data-e2e=chat-room]').insertAdjacentHTML('beforeend', " +
+            "\"<div data-e2e='live-chat-gift'><a href='/@sam'>Sam</a><img data-e2e='gift-icon' alt='Stern'></div>\");");
+        var iconGifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
         return initial != null && initial.Count == 0 && added != null && added.Count == 1 &&
             added[0].Name == "Zuschauer" && added[0].Text == "Wie heißt das Spiel?" &&
             repeated != null && repeated.Count == 0 && gifts.Count == 1 && repeatedGifts.Count == 0 &&
+            iconGifts.Count == 1 && iconGifts[0].Name == "Sam" && iconGifts[0].Title == "Stern" &&
             GiftAnnouncement(gifts[0].Name, gifts[0].Title) == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
     }
 
@@ -295,9 +308,14 @@ internal sealed class LiveComments : UserControl
             SetConnection(comments != null);
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
-            if (readGifts.Checked)
-                foreach (var gift in json.Deserialize<List<Gift>>(giftResult))
-                    Speak(GiftAnnouncement(gift.Name, gift.Title));
+            foreach (var gift in json.Deserialize<List<Gift>>(giftResult))
+            {
+                var announcement = GiftAnnouncement(gift.Name, gift.Title);
+                if (history.Items.Count == 200) history.Items.RemoveAt(0);
+                history.Items.Add(announcement);
+                history.TopIndex = history.Items.Count - 1;
+                if (readGifts.Checked) Speak(announcement, true);
+            }
             foreach (var comment in comments)
             {
                 var line = comment.Name + ": " + comment.Text;
@@ -339,21 +357,31 @@ internal sealed class LiveComments : UserControl
         public string Title { get; set; }
     }
 
-    private void Speak(string text)
+    private void Speak(string text, bool gift = false)
     {
         if (voice.SelectedItem == null) return;
-        if (pending.Count == 5) pending.Dequeue();
-        pending.Enqueue(text);
+        if (gift)
+        {
+            if (pendingGifts.Count >= 20) return;
+            pendingGifts.Enqueue(text);
+        }
+        else
+        {
+            if (pending.Count == 5) pending.Dequeue();
+            pending.Enqueue(text);
+        }
         if (!speaking) SpeechCompleted();
     }
+
+    private readonly Queue<string> pendingGifts = new Queue<string>();
 
     private async void SpeechCompleted()
     {
         speaking = false;
-        if (pending.Count == 0 || IsDisposed) return;
+        if ((pendingGifts.Count == 0 && pending.Count == 0) || IsDisposed) return;
         if (voice.SelectedIndex >= localVoiceCount)
         {
-            var text = pending.Dequeue();
+            var text = pendingGifts.Count > 0 ? pendingGifts.Dequeue() : pending.Dequeue();
             var cancellation = new System.Threading.CancellationTokenSource();
             characterSpeech = cancellation;
             speaking = true;
@@ -376,7 +404,7 @@ internal sealed class LiveComments : UserControl
             speech.SelectVoice((string)voice.SelectedItem);
             speech.Volume = (int)volume.Value;
             speech.Rate = (int)Math.Round(10 * Math.Log((double)speed.Value / 100, 2));
-            var text = pending.Dequeue();
+            var text = pendingGifts.Count > 0 ? pendingGifts.Dequeue() : pending.Dequeue();
             if (style.SelectedIndex == 0) speech.SpeakAsync(text);
             else
             {
@@ -401,6 +429,7 @@ internal sealed class LiveComments : UserControl
     private void StopSpeech()
     {
         pending.Clear();
+        pendingGifts.Clear();
         if (characterSpeech != null) characterSpeech.Cancel();
         else if (speaking && speech != null) speech.SpeakAsyncCancelAll();
     }
