@@ -143,13 +143,13 @@ internal sealed class MusicQueue : UserControl
         if (string.IsNullOrWhiteSpace(title)) return;
         try
         {
-            var url = "https://open.spotify.com/search/" + Uri.EscapeDataString(title.Trim());
+            var url = "spotify:search:" + Uri.EscapeDataString(title.Trim());
             using (var window = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })) { }
-            spotifyStatus.Text = "Spotify-Suche wurde geöffnet.";
+            spotifyStatus.Text = "Suche an Spotify Desktop übergeben.";
         }
         catch (System.ComponentModel.Win32Exception error)
         {
-            spotifyStatus.Text = "Spotify-Suche konnte nicht geöffnet werden.";
+            spotifyStatus.Text = "Spotify Desktop konnte nicht geöffnet werden. Prüfe die Installation.";
             ErrorLog.Write("Spotify", spotifyStatus.Text, error);
         }
     }
