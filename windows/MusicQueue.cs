@@ -76,8 +76,7 @@ internal sealed class MusicQueue : UserControl
             if (AddWish(query.Text)) query.Clear();
         };
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
-        AddButton(searchTools, "Wunsch entfernen", delegate
-            RemoveWish(requests.SelectedItem as string));
+        AddButton(searchTools, "Wunsch entfernen", () => RemoveWish(requests.SelectedItem as string));
         searchTools.Controls.Add(collect);
         searchTools.Controls.Add(autoPlay);
         AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
