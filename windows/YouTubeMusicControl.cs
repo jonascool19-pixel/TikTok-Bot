@@ -14,6 +14,32 @@ internal sealed class YouTubeMusicControl : UserControl
     private static readonly HttpClient Client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(45) };
     private readonly Label status = new Label { AutoSize = true, Text = "Pear Desktop: API Server auf 127.0.0.1:26538 aktivieren." };
     private string token;
+    private bool busy;
+
+    internal async Task<bool> QueueLiveWish(string videoId)
+    {
+        if (busy || token == null || VideoId(videoId) != videoId) return false;
+        busy = true;
+        try
+        {
+            using (var request = new HttpRequestMessage(HttpMethod.Post, Root + "api/v1/queue"))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                request.Content = new StringContent("{\"videoId\":\"" + videoId + "\",\"insertPosition\":\"INSERT_AT_END\"}", Encoding.UTF8, "application/json");
+                using (var response = await Client.SendAsync(request))
+                {
+                    response.EnsureSuccessStatusCode();
+                    return true;
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            ErrorLog.Write("YouTube Music", "LIVE-Musikwunsch konnte nicht eingereiht werden.", error);
+            return false;
+        }
+        finally { busy = false; }
+    }
 
     internal YouTubeMusicControl(string directory, Action<bool> saved)
     {
@@ -36,6 +62,8 @@ internal sealed class YouTubeMusicControl : UserControl
 
     private async Task Execute(Control controls, string videoId, string path, Action<bool> saved)
     {
+        if (busy) return;
+        busy = true;
         controls.Enabled = false;
         try
         {
@@ -73,7 +101,7 @@ internal sealed class YouTubeMusicControl : UserControl
             status.Text = "Pear Desktop nicht erreichbar. Prüfe, ob der lokale API Server läuft.";
             ErrorLog.Write("YouTube Music", "Pear-Desktop-Anfrage fehlgeschlagen.", error);
         }
-        finally { if (!IsDisposed) controls.Enabled = true; }
+        finally { busy = false; if (!IsDisposed) controls.Enabled = true; }
     }
 
     internal static string VideoId(string input)
