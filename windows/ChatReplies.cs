@@ -23,7 +23,8 @@ internal sealed class ChatReplies : UserControl
         "Kann man Songs requesten?", "Wie wähle ich zwischen mehreren Versionen?",
         "Warum wurde mein Musikwunsch nicht gefunden?", "Spielt der Bot Spotify im Stream?",
         "Was kannst du als Bot?", "Liest der Bot Kommentare vor?", "Welche Stimmen gibt es?",
-        "Bist du ein Bot?", "Werden meine Kommentare gespeichert?", "Was bedeutet der grüne LIVE-Punkt?"
+        "Bist du ein Bot?", "Werden meine Kommentare gespeichert?", "Was bedeutet der grüne LIVE-Punkt?",
+        "Wie geht es dir?", "Na, wie geht’s dir heute?", "Alles gut bei dir?"
     };
     private readonly CheckBox enabled = new CheckBox { Text = "LIVE-Kommentare automatisch prüfen", AutoSize = true, Checked = true };
     private readonly TextBox game = new TextBox { Width = 210, MaxLength = 100, AccessibleName = "Spielname optional" };
@@ -198,6 +199,8 @@ internal sealed class ChatReplies : UserControl
     internal static string Suggest(string text, string game, bool requestsEnabled = false)
     {
         var message = text.Trim().ToLowerInvariant();
+        if (Regex.IsMatch(message, @"\A(?:(?:na|hey|hallo|hi)[,!.]?\s+)?(?:wie geht(?: es|['’]?s)(?: dir| euch)?(?: heute)?|alles (?:gut|klar) bei (?:dir|euch)(?: heute)?)[\s?!.,]*\z"))
+            return "Mir geht’s gut, danke! Und dir?";
         if (Regex.IsMatch(message, @"\A(?:wie|was|kann|können|warum|welch)"))
         {
             if (Regex.IsMatch(message, @"mehrere (?:treffer|versionen)|zwischen .*versionen"))

@@ -540,6 +540,9 @@ internal sealed class BotWindow : Form
         return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret) &&
             ErrorLog.Read() == "Keine Fehler protokolliert." &&
             ChatReplies.Suggest("Moin!", "") != null &&
+            ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
+            ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&
+            ChatReplies.Suggest("Alles gut bei dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Wie heißt das Spiel?", "Minecraft") == "Das Spiel heißt Minecraft." &&
             ChatReplies.Suggest("Wie kann ich mir ein Lied wünschen?", "", true).Contains("#Musikwunsch") &&
             ChatReplies.Suggest("Kann ich mir einen Song wünschen?", "", false).Contains("deaktiviert") &&
