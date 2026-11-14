@@ -39,6 +39,8 @@ internal sealed class BotWindow : Form
     private bool missingAccountLogged;
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
     private readonly Label settingsFeedback = new Label { Dock = DockStyle.Bottom, Height = 25, Visible = false };
+    private AppTheme theme = AppTheme.Designs[0];
+    private bool? saveSucceeded;
     private readonly bool smokeTest;
     private readonly Label accountState = new Label { AutoSize = true, Text = "Bot-Konto: Anmeldung wird geprüft" };
     private readonly string data;
@@ -118,7 +120,8 @@ internal sealed class BotWindow : Form
             bell.Text = unread == 0 ? "🔔" : "🔔 " + unread;
             bell.AccessibleName = "Benachrichtigungen, " + unread + " ungelesen";
             bell.BackColor = SystemInformation.HighContrast ? SystemColors.Control :
-                unread > 0 ? Color.LightGoldenrodYellow : Color.White;
+                unread > 0 ? theme.Selection : theme.Surface;
+            if (!SystemInformation.HighContrast) bell.ForeColor = unread > 0 ? theme.Accent : theme.Ink;
         };
         Action<string> notify = message =>
         {
@@ -158,11 +161,13 @@ internal sealed class BotWindow : Form
             }
             notices.Show(bell, new Point(0, bell.Height));
         };
-        var header = new Panel { Dock = DockStyle.Top, Height = 52 };
+        var header = new Panel { Dock = DockStyle.Top, Height = 94, Padding = new Padding(14, 5, 14, 4) };
+        var brand = new Label { Dock = DockStyle.Top, Height = 36, Text = "TikTok-Bot", Font = AppTheme.HeadingFont };
         toolbar.Dock = DockStyle.Fill;
-        header.Controls.AddRange(new Control[] { toolbar, bell });
+        header.Controls.AddRange(new Control[] { toolbar, bell, brand });
+        toolbar.Padding = new Padding(0, 3, 0, 0);
         music.WishAdded += title => notify("Musikwunsch: " + title);
-        var tabs = new TabControl { Dock = DockStyle.Fill };
+        var tabs = AppTheme.CreateTabs(() => theme);
         var liveTab = new TabPage("TikTok-Webansicht");
         liveTab.Controls.Add(browser);
         var chatTab = new TabPage("Kommentare und Stimme");
@@ -194,7 +199,20 @@ internal sealed class BotWindow : Form
         var repliesTab = new TabPage("Chatantworten");
         repliesTab.Controls.Add(replies);
         var settingsTab = new TabPage("Einstellungen");
-        var menu = new ListBox { Dock = DockStyle.Left, Width = 200, IntegralHeight = false, AccessibleName = "Einstellungsbereiche" };
+        var menu = new ListBox { Dock = DockStyle.Left, Width = 200, IntegralHeight = false, ItemHeight = 36, DrawMode = DrawMode.OwnerDrawFixed, AccessibleName = "Einstellungsbereiche" };
+        menu.DrawItem += (sender, args) =>
+        {
+            if (args.Index < 0) return;
+            var selected = (args.State & DrawItemState.Selected) != 0;
+            var contrast = SystemInformation.HighContrast;
+            using (var brush = new SolidBrush(contrast ? (selected ? SystemColors.Highlight : SystemColors.Window) :
+                (selected ? theme.Selection : theme.Surface))) args.Graphics.FillRectangle(brush, args.Bounds);
+            var bounds = new Rectangle(args.Bounds.X + 12, args.Bounds.Y, args.Bounds.Width - 24, args.Bounds.Height);
+            var ink = contrast ? (selected ? SystemColors.HighlightText : SystemColors.WindowText) : (selected ? theme.Accent : theme.Ink);
+            TextRenderer.DrawText(args.Graphics, menu.Items[args.Index].ToString(), menu.Font, bounds, ink,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            args.DrawFocusRectangle();
+        };
         var settingsContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14) };
         settingsTab.Padding = new Padding(12);
         settingsTab.Controls.AddRange(new Control[] { settingsContent, menu });
@@ -211,7 +229,9 @@ internal sealed class BotWindow : Form
         var liveStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 12, 0) };
         Action<bool> updateLiveStatus = connected =>
         {
-            liveStatus.ForeColor = connected ? Color.DarkGreen : Color.Firebrick;
+            liveStatus.ForeColor = SystemInformation.HighContrast ? SystemColors.ControlText :
+                connected ? (theme.Name == "Klar" ? Color.DarkGreen : Color.PaleGreen) :
+                (theme.Name == "Klar" ? Color.Firebrick : Color.LightSalmon);
             liveStatus.Text = connected ? "● LIVE verbunden" : "● Nicht live";
         };
         updateLiveStatus(false);
@@ -286,7 +306,49 @@ internal sealed class BotWindow : Form
             Shown += async delegate { updateTimer.Start(); await updater.Check(); };
         Disposed += delegate { updateTimer.Dispose(); notices.Dispose(); };
         intervalsTab.Controls.Add(intervals);
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab };
+        var designsTab = new TabPage("Designs");
+        var designOptions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
+        var designTitle = new Label { Text = "Design auswählen", Font = AppTheme.HeadingFont, AutoSize = true };
+        var designPicker = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250, AccessibleName = "Design" };
+        var designPath = Path.Combine(data, "design.txt");
+        try { if (File.Exists(designPath)) theme = AppTheme.Find(File.ReadAllText(designPath).Trim()); }
+        catch (IOException error) { ErrorLog.Write("Designs", "Design konnte nicht geladen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Designs", "Design konnte nicht geladen werden.", error); }
+        foreach (var design in AppTheme.Designs) designPicker.Items.Add(design.Name);
+        designPicker.SelectedItem = theme.Name;
+        Action applyDesign = delegate
+        {
+            var next = AppTheme.Find(designPicker.SelectedItem as string);
+            if (!SavePreference(designPath, next.Name)) { designPicker.SelectedItem = theme.Name; return; }
+            theme = next;
+            theme.Apply(this);
+            if (!SystemInformation.HighContrast) brand.ForeColor = theme.Accent;
+            updateLiveStatus(comments.ChatAvailable);
+            refreshBell();
+            if (saveSucceeded.HasValue) ShowSettingsFeedback(saveSucceeded.Value);
+        };
+        designPicker.SelectionChangeCommitted += delegate { applyDesign(); };
+        var previews = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
+        foreach (var design in AppTheme.Designs)
+        {
+            var preview = new Button { Text = design.Name, Tag = design, Width = 110, Height = 41, FlatStyle = FlatStyle.Flat,
+                BackColor = design.Selection, ForeColor = design.Accent, UseVisualStyleBackColor = false };
+            preview.FlatAppearance.BorderColor = design.Border;
+            if (SystemInformation.HighContrast)
+            {
+                preview.BackColor = SystemColors.Control;
+                preview.ForeColor = SystemColors.ControlText;
+            }
+            preview.Click += delegate
+            {
+                designPicker.SelectedItem = design.Name;
+                applyDesign();
+            };
+            previews.Controls.Add(preview);
+        }
+        designOptions.Controls.AddRange(new Control[] { designTitle, designPicker, previews });
+        designsTab.Controls.Add(designOptions);
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -322,7 +384,8 @@ internal sealed class BotWindow : Form
             }
         };
         Font = AppTheme.TextFont;
-        AppTheme.Apply(this);
+        theme.Apply(this);
+        if (!SystemInformation.HighContrast) brand.ForeColor = theme.Accent;
         updateLiveStatus(false);
         Shown += InitializeBrowser;
     }
@@ -447,8 +510,10 @@ internal sealed class BotWindow : Form
 
     private void ShowSettingsFeedback(bool saved)
     {
+        saveSucceeded = saved;
         settingsFeedback.Text = saved ? "Einstellung gespeichert" : "Einstellung konnte nicht gespeichert werden";
-        settingsFeedback.ForeColor = SystemInformation.HighContrast ? SystemColors.ControlText : saved ? Color.DarkGreen : Color.Firebrick;
+        settingsFeedback.ForeColor = SystemInformation.HighContrast ? SystemColors.ControlText : saved ? theme.Accent :
+            (theme.Name == "Klar" ? Color.Firebrick : Color.LightSalmon);
         settingsFeedback.Visible = true;
     }
 
