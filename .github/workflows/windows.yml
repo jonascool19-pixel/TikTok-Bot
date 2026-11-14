@@ -16,10 +16,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.tag }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - run: npm test
       - name: Build and verify setup
         shell: pwsh
         env:

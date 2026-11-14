@@ -24,7 +24,8 @@ internal sealed class LiveComments : UserControl
     private System.Threading.CancellationTokenSource characterSpeech;
     private int localVoiceCount;
     private readonly Queue<string> pending = new Queue<string>();
-    internal event Action<string> CommentReceived;
+    internal event Action<string, string> ViewerComment;
+    internal bool ChatAvailable { get; private set; }
 
     private const string ReadComments = @"
 (() => {
@@ -38,7 +39,9 @@ internal sealed class LiveComments : UserControl
         const name = row.querySelector('[data-e2e=""message-owner-name""]');
         const text = row.querySelector('.break-words.align-middle');
         if (!name || !text) continue;
-        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.textContent.trim().slice(0,300) };
+        const link = row.querySelector('a[href^=""/@""]');
+        const handle = link && link.getAttribute('href').match(/^\/@([\w.]+)(?:[/?#]|$)/);
+        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.textContent.trim().slice(0,300), Handle: handle ? handle[1] : '' };
         if (!entry.Name || !entry.Text) continue;
         const key = JSON.stringify(entry);
         if (previous && previous.root === root && seen.get(row) !== key) comments.push(entry);
@@ -86,6 +89,7 @@ internal sealed class LiveComments : UserControl
         browser = core;
         browser.NavigationStarting += delegate
         {
+            ChatAvailable = false;
             generation++;
             history.Items.Clear();
             StopSpeech();
@@ -126,6 +130,7 @@ internal sealed class LiveComments : UserControl
             var result = await browser.ExecuteScriptAsync(ReadComments);
             if (IsDisposed || current != generation) return;
             var comments = json.Deserialize<List<Comment>>(result);
+            ChatAvailable = comments != null;
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
             foreach (var comment in comments)
@@ -135,8 +140,8 @@ internal sealed class LiveComments : UserControl
                 history.Items.Add(line);
                 history.TopIndex = history.Items.Count - 1;
                 if (read.Checked) Speak(line);
-                var onComment = CommentReceived;
-                if (onComment != null) onComment(comment.Text);
+                var onViewer = ViewerComment;
+                if (onViewer != null) onViewer(comment.Handle, comment.Text);
             }
         }
         catch (InvalidOperationException) { if (!IsDisposed) status.Text = "LIVE-Chat vorübergehend nicht verfügbar."; }
@@ -218,5 +223,6 @@ internal sealed class LiveComments : UserControl
     {
         public string Name { get; set; }
         public string Text { get; set; }
+        public string Handle { get; set; }
     }
 }

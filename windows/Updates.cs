@@ -10,14 +10,18 @@ using System.Windows.Forms;
 internal sealed class Updates : UserControl
 {
     private const string Repo = "jonascool19-pixel/TikTok-Bot";
-    private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromSeconds(45), MaxResponseContentBufferSize = 32 * 1024 * 1024 };
+    private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromMinutes(15), MaxResponseContentBufferSize = 512 * 1024 * 1024 };
     private readonly Label status = new Label { Dock = DockStyle.Top, Height = 44 };
     private readonly Button check = new Button { Text = "Nach Updates suchen", AutoSize = true };
     private readonly Button install = new Button { Text = "Update installieren", AutoSize = true, Enabled = false };
     private Asset available;
     private readonly Version current;
 
-    static Updates() { Client.DefaultRequestHeaders.UserAgent.ParseAdd("TikTok-Bot-Windows"); }
+    static Updates()
+    {
+        System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+        Client.DefaultRequestHeaders.UserAgent.ParseAdd("TikTok-Bot-Windows");
+    }
 
     internal Updates()
     {
@@ -37,7 +41,13 @@ internal sealed class Updates : UserControl
         status.Text = "Suche nach einem Windows-Update …";
         try
         {
-            var json = await Client.GetStringAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=50");
+            string json;
+            using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20)))
+            using (var response = await Client.GetAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=50", timeout.Token))
+            {
+                response.EnsureSuccessStatusCode();
+                json = await response.Content.ReadAsStringAsync();
+            }
             var releases = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Deserialize<Release[]>(json);
             var latest = current;
             foreach (var release in releases)
@@ -60,7 +70,7 @@ internal sealed class Updates : UserControl
                 : "Windows-Update " + latest.ToString(3) + " verfügbar.";
             install.Enabled = available != null;
         }
-        catch (HttpRequestException) { status.Text = "GitHub ist nicht erreichbar oder der Zugriff fehlt."; }
+        catch (HttpRequestException error) { status.Text = "Updatesuche fehlgeschlagen. " + error.Message; }
         catch (OperationCanceledException) { status.Text = "Die Updatesuche hat zu lange gedauert."; }
         catch (ArgumentException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }
         catch (InvalidOperationException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }

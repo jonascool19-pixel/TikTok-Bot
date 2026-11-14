@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Windows.Media;
 using System.Threading.Tasks;
@@ -13,10 +16,18 @@ internal sealed class MusicQueue : UserControl
     private bool playing;
     private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
-    private readonly CheckBox collect = new CheckBox { Text = "!song und !wunsch aus dem LIVE-Chat übernehmen", AutoSize = true };
+    private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
+    private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
+    private readonly List<FileInfo> library = new List<FileInfo>();
+    private readonly Dictionary<string, Choice> choices = new Dictionary<string, Choice>(StringComparer.OrdinalIgnoreCase);
+    private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, AccessibleName = "Nachricht für den LIVE-Chat" };
+    private readonly Timer reminders = new Timer { Interval = 900000 };
+    private readonly Func<bool> chatAvailable;
+    private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
 
-    internal MusicQueue()
+    internal MusicQueue(Func<bool> chatAvailable)
     {
+        this.chatAvailable = chatAvailable;
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         AddButton(tools, "Dateien hinzufügen", AddFiles);
         AddButton(tools, "Abspielen", delegate { if (!playing) Next(); });
@@ -51,24 +62,79 @@ internal sealed class MusicQueue : UserControl
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
         AddButton(searchTools, "Wunsch entfernen", delegate { if (requests.SelectedIndex >= 0) requests.Items.RemoveAt(requests.SelectedIndex); });
         searchTools.Controls.Add(collect);
+        searchTools.Controls.Add(autoPlay);
+        AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
         requests.DoubleClick += delegate { Search(requests.SelectedItem as string); };
         var sources = new TabControl { Dock = DockStyle.Fill };
         var local = new TabPage("Lokale Dateien");
         local.Controls.AddRange(new Control[] { queue, status, tools });
         var remote = new TabPage("Spotify und Musikwünsche");
-        remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus });
+        remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus, prompt });
         sources.TabPages.AddRange(new[] { local, remote });
         Controls.Add(sources);
+        collect.CheckedChanged += delegate
+        {
+            choices.Clear();
+            prompt.Text = collect.Checked ? Hint : "";
+            reminders.Enabled = collect.Checked;
+        };
+        reminders.Tick += delegate { if (this.chatAvailable() && !choices.Values.Any(c => c.Expires > DateTime.UtcNow)) prompt.Text = Hint; };
     }
 
-    internal void ConsiderRequest(string message)
+    internal bool ConsiderRequest(string handle, string message)
     {
-        if (!collect.Checked || requests.Items.Count >= 100) return;
-        var match = System.Text.RegularExpressions.Regex.Match(message, @"\A!(?:song|wunsch)\s+(.{2,150})\z",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (!match.Success) return;
+        if (!collect.Checked) return false;
+        Choice choice;
+        int number;
+        if (!string.IsNullOrEmpty(handle) && choices.TryGetValue(handle, out choice) &&
+            choice.Expires > DateTime.UtcNow && Regex.IsMatch(message, @"\A[123]\z") && int.TryParse(message, out number))
+        {
+            if (number <= choice.Tracks.Length)
+            {
+                choices.Remove(handle);
+                QueueRequest(choice.Tracks[number - 1]);
+            }
+            return true;
+        }
+        var match = Regex.Match(message, @"\A(?:#musikwunsch|!song|!wunsch)\s+(.{2,150})\z", RegexOptions.IgnoreCase);
+        if (!match.Success) return false;
         var title = match.Groups[1].Value.Trim();
-        if (title.Length >= 2 && !requests.Items.Contains(title)) requests.Items.Add(title);
+        if (title.Length < 2) return true;
+        if (requests.Items.Count < 100 && !requests.Items.Contains(title)) requests.Items.Add(title);
+        var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
+        if (terms.Length == 0) return true;
+        var tracks = library.Where(file => File.Exists(file.FullName) &&
+            terms.All(term => Path.GetFileNameWithoutExtension(file.Name).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0))
+            .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase).Take(3).ToArray();
+        if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
+        foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
+            choices.Remove(expired);
+        if (tracks.Length == 1) QueueRequest(tracks[0]);
+        else if (tracks.Length > 1 && !string.IsNullOrEmpty(handle) && choices.Count < 100)
+        {
+            choices[handle] = new Choice { Tracks = tracks, Expires = DateTime.UtcNow.AddMinutes(3) };
+            var names = tracks.Select((file, index) => (index + 1) + ") " + Path.GetFileNameWithoutExtension(file.Name));
+            var reply = "@" + handle + " Wähle mit " + (tracks.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
+            var max = Math.Max(8, (150 - reply.Length - 6) / tracks.Length);
+            prompt.Text = reply + string.Join(" | ", names.Select(name => name.Length > max ? name.Substring(0, max - 1) + "…" : name));
+        }
+        else if (tracks.Length > 1) prompt.Text = "Mehrere lokale Treffer. Der Zuschauer konnte nicht eindeutig zugeordnet werden.";
+        else prompt.Text = "Kein lokaler Treffer für „" + title + "“.";
+        return true;
+    }
+
+    internal void ResetChoices() { choices.Clear(); prompt.Text = collect.Checked ? Hint : ""; }
+
+    private void QueueRequest(FileInfo file)
+    {
+        if (queue.Items.Count < 100) queue.Items.Add(file);
+        if (autoPlay.Checked && !playing) Next();
+    }
+
+    private sealed class Choice
+    {
+        internal FileInfo[] Tracks;
+        internal DateTime Expires;
     }
 
     private void Search(string title)
@@ -128,7 +194,12 @@ internal sealed class MusicQueue : UserControl
         using (var picker = new OpenFileDialog { Multiselect = true, Filter = "Audio|*.mp3;*.wav;*.wma;*.m4a;*.aac" })
         {
             if (picker.ShowDialog(this) != DialogResult.OK) return;
-            foreach (var file in picker.FileNames) queue.Items.Add(new FileInfo(file));
+            foreach (var path in picker.FileNames)
+            {
+                var file = new FileInfo(path);
+                if (!library.Any(item => string.Equals(item.FullName, file.FullName, StringComparison.OrdinalIgnoreCase))) library.Add(file);
+                queue.Items.Add(file);
+            }
         }
     }
 
@@ -158,7 +229,7 @@ internal sealed class MusicQueue : UserControl
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) player.Close();
+        if (disposing) { player.Close(); reminders.Dispose(); }
         base.Dispose(disposing);
     }
 }

@@ -1,33 +1,20 @@
-# TikTok-Bot
+# TikTok-Bot für Windows
 
-Selbst betriebenes Dashboard für TikTok LIVE auf Proxmox. Ein Ubuntu-CT empfängt Ereignisse, erzeugt lokale Sprachausgabe und kann über ein separates Konto im Chat schreiben. Es spielt keine Rolle, ob der Creator vom Handy oder mit TikTok LIVE Studio sendet.
+Desktop-App für TikTok LIVE auf Windows x64. Öffne einen LIVE per `@Name` oder vollständigem LIVE-Link. Das Bot-Konto meldest du in der TikTok-Ansicht an. WebView2 speichert die Sitzung lokal.
 
-## Installation
+## Installation und Updates
 
-Vorausgesetzt ist ein Ubuntu-24.04-CT auf x86-64 mit systemd, Internetzugang . Führe den Befehl als root **im CT** aus:
+Entpacke das Windows-Paket aus dem [GitHub-Release](https://github.com/jonascool19-pixel/TikTok-Bot/releases) und starte `TikTok-Bot-Setup.exe`. Das Setup installiert für den aktuellen Benutzer. Du kannst ein Desktop-Symbol hinzufügen. Windows benötigt die Microsoft Edge WebView2 Runtime.
 
-~~~bash
-installer=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/jonascool19-pixel/TikTok-Bot/v0.1.30/install.sh -o "$installer" && bash "$installer"
-~~~
+Im Reiter **Updates** sucht die App nach veröffentlichten Windows-Versionen dieses Repositorys, prüft das heruntergeladene Setup per SHA-256 und startet die Installation im bestehenden Ordner. Das TikTok-Profil, das gespeicherte Bot-Konto und das LIVE-Ziel liegen separat unter `%LOCALAPPDATA%\TikTok-Bot\WindowsPrototype`.
 
-Bei einer Neuinstallation wählt der Installer einen freien TCP-Port. Updates behalten den bisherigen Port. Öffne die angezeigte CT-Adresse im Heimnetz. Der Installer aktualisiert die Ubuntu-Pakete, installiert die Anwendung und prüft die HTTP-Erreichbarkeit des Dienstes. Das farbige Abschlussfeld zeigt Dashboard-URL, Benutzer und Startpasswort. Das Startpasswort erscheint nur bei der Ersteinrichtung. Beim ersten Login ist ein Wechsel Pflicht. Wiederholte Installationen lassen die gespeicherten Einstellungen und das Passwort bestehen.
+## Chat, Stimme und Musik
 
-Falls im CT curl fehlt, installiere es zunächst mit apt-get update && apt-get install -y curl. Für die Installation aus einem entpackten GitHub-Actions-Artefakt genügt bash install.sh im Paketverzeichnis. Der Installer erzeugt kein öffentliches Port-Forwarding. Nutze das Dashboard nur in deinem vertrauenswürdigen Heimnetz oder hinter einem HTTPS-Reverse-Proxy. Für HTTPS lässt sich BOT_SECURE_COOKIE=1 in /etc/tiktok-bot.env setzen. Die Mikrofonaufnahme im Browser benötigt HTTPS oder localhost. Über HTTP funktioniert der Upload vorhandener Audioclips.
+- **Kommentare und Stimme** zeigt LIVE-Kommentare an und kann sie mit lokalen deutschen Stimmen vorlesen. Der eingebettete LIVE-Ton ist standardmäßig stumm.
+- **Chatantworten** erstellt bei aktiviertem LIVE-Modus Antwortvorschläge. Das Modell entscheidet anhand des Kommentars, ob eine Antwort sinnvoll ist. Zum Ausprobieren kannst du auch eine Nachricht eingeben. Den Vorschlag sendest du im TikTok-Chat.
+- **Musik** nimmt auf Wunsch `#Musikwunsch Künstler – Titel` an und durchsucht die über **Dateien hinzufügen** geladene lokale Bibliothek. Ein eindeutiger Treffer landet in der Warteschlange. Bei mehreren Treffern kannst du die vorgeschlagene Chatnachricht kopieren. Der Zuschauer kann mit einer Zahl antworten, sofern TikTok den @Namen liefert. Bei eingeschalteter automatischer Wiedergabe startet ein Treffer, wenn gerade kein lokaler Titel läuft. Der Hinweistext für Musikwünsche steht zum Kopieren bereit.
+- Spotify-Suche und -Steuerung öffnen bzw. steuern Spotify Desktop separat.
 
-## TikTok verbinden
+## Build
 
-Trage unter TikTok-Verbindung deinen Creator-Namen ein und speichere. Klicke auf **Bot-Konto verbinden**. Über HTTP öffnet der Button automatisch die konfigurierte HTTPS-Adresse oder denselben Host auf Port 443. Melde dich im angezeigten TikTok-Browser mit dem separaten Bot-Konto an und wähle **Bot-Konto übernehmen**. Aktiviere anschließend den Versand und speichere.
-
-Die Anmeldung bleibt im Firefox-Profil des CT. Beim Umstieg von Chromium meldest du dich in Firefox einmal neu an. Die Verbindung liest sichtbare Textkommentare. Geschenk- und Beitrittsereignisse lassen sich simulieren, werden über diese Verbindung aber noch nicht erfasst. TikTok-Seitenänderungen und die Browser-Konfiguration des CT können den Betrieb beeinflussen.
-
-Unter Audio stehen Thorsten, Kerstin, Amy und drei Cartoon-Varianten zur Auswahl. Beim Verbinden prüft der Bot HTTPS automatisch. Hinter einem Proxy kann er dafür ein sicheres Browser-Cookie verwenden. BOT_PUBLIC_URL kann die öffentliche HTTPS-Adresse für den klickbaren Dashboard-Link enthalten. Der Fehlerlog aktualisiert sich alle zehn Sekunden im geöffneten Reiter. Datenverbrauch zeigt gemessene HTTP-Bytes des TikTok-Browsers. CPU und RAM verwenden die Linux-cgroup-Werte.
-
-## Backup und Fehlerdiagnose
-
-Exportiere im Dashboard ein verschlüsseltes Backup der Einstellungen und Aufnahmen. Zugangsdaten lassen sich optional einschließen. Beim Wiederherstellen bleibt das Admin-Passwort der Zielinstallation bestehen. Chatversand und freie Antworten müssen erneut aktiviert werden. Prüfe auch, ob die TikTok-Sitzung noch gültig ist.
-
-Das Dashboard zeigt die letzten 200 Einträge aus dem begrenzten Fehlerlog und kann sie als JSONL exportieren. Die Anwendung protokolliert Fehler für TikTok, Versand, Audio, KI, Anmeldung und Wiederherstellung ohne Chattexte, Sitzungsdaten oder Schlüssel. Installationsprobleme findest du in /var/log/tiktok-bot-install.log. Dienstmeldungen sind über journalctl -u tiktok-bot verfügbar.
-
-## Entwicklung
-
-npm ci installiert die festgeschriebenen Abhängigkeiten. npm test führt die automatisierten Logiktests aus. Zum lokalen Start legst du das Admin-Passwort mit node src/server.js --init an und startest den Server mit node src/server.js. Ohne weitere Konfiguration hört er nur auf 127.0.0.1:8080. Für Sprachausgabe muss espeak-ng vorhanden sein. GitHub Actions prüft den Dienst auf Ubuntu und stellt für Versions-Tags ein Archiv samt Prüfsumme bereit.
+GitHub Actions baut manuell anhand eines Tags `windows-vX.Y.Z`. Der Lauf prüft Setup, Update über eine bestehende Installation, App-Start, Desktop-Verknüpfung und lokale Sprachausgabe. Einzelheiten stehen im [Workflow](.github/workflows/windows.yml).

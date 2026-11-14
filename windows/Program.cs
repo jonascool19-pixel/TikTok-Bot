@@ -67,10 +67,8 @@ internal sealed class BotWindow : Form
             }
             var dialog = new ChatReplies();
             replyDialog = dialog;
-            comments.CommentReceived += dialog.ConsiderLiveComment;
             dialog.FormClosed += delegate
             {
-                comments.CommentReceived -= dialog.ConsiderLiveComment;
                 replyDialog = null;
             };
             dialog.Show(this);
@@ -94,8 +92,13 @@ internal sealed class BotWindow : Form
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
-        var music = new MusicQueue { Dock = DockStyle.Fill };
-        comments.CommentReceived += music.ConsiderRequest;
+        var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
+        comments.ViewerComment += (handle, message) =>
+        {
+            if (!string.IsNullOrEmpty(handle) && string.Equals("@" + handle, botHandle ?? configuredHandle, StringComparison.OrdinalIgnoreCase)) return;
+            if (!music.ConsiderRequest(handle, message) && replyDialog != null) replyDialog.ConsiderLiveComment(message);
+        };
+        browser.NavigationStarting += delegate { music.ResetChoices(); };
         musicTab.Controls.Add(music);
         var updatesTab = new TabPage("Updates");
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
