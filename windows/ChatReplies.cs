@@ -145,16 +145,19 @@ internal sealed class ChatReplies : UserControl
         {
             File.WriteAllText(input, prompt, new UTF8Encoding(false));
             using (var process = Process.Start(new ProcessStartInfo(Path.Combine(folder, "llama-cli.exe"),
-                "-m model.gguf -f \"" + input + "\" -n 48 -c 2048 -t 4 --no-conversation --no-display-prompt --simple-io --log-disable")
-                { WorkingDirectory = folder, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = Encoding.UTF8 }))
+                "-m model.gguf -f \"" + input + "\" -n 48 -c 2048 -t 4 --no-conversation --no-display-prompt --simple-io")
+                { WorkingDirectory = folder, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+                    RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 }))
             {
                 var output = process.StandardOutput.ReadToEndAsync();
+                var diagnostics = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(45000))
                 {
                     process.Kill();
                     throw new TimeoutException();
                 }
                 if (process.ExitCode != 0) throw new InvalidOperationException("Lokales Modell meldete einen Fehler.");
+                diagnostics.GetAwaiter().GetResult();
                 return output.GetAwaiter().GetResult().Replace("[end of text]", "").Trim();
             }
         }
