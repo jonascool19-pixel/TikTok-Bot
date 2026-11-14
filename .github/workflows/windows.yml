@@ -120,10 +120,14 @@ jobs:
           if (Test-Path (Join-Path $installed 'TikTok-Bot.exe')) { throw 'Uninstall left the application installed.' }
           "$( (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant() )  TikTok-Bot-Setup.exe" |
             Set-Content -Encoding ascii windows/build/TikTok-Bot-Setup.exe.sha256
+          $digest = (Get-FileHash -LiteralPath $installer).Hash.ToLowerInvariant()
+          @{version=$version; size=(Get-Item -LiteralPath $installer).Length; digest="sha256:$digest"} |
+            ConvertTo-Json -Compress | Set-Content -Encoding ascii windows/build/windows-update.json
       - uses: actions/upload-artifact@v4
         with:
           name: TikTok-Bot-win-x64
           path: |
             windows/build/TikTok-Bot-Setup.exe
             windows/build/TikTok-Bot-Setup.exe.sha256
+            windows/build/windows-update.json
           if-no-files-found: error

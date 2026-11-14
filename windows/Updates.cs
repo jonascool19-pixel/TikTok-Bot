@@ -45,31 +45,15 @@ internal sealed class Updates : UserControl
         status.Text = "Suche nach einem Windows-Update …";
         try
         {
-            string json;
+            Asset release;
             using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20)))
-            using (var response = await Client.GetAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=50", timeout.Token))
+            using (var response = await Client.GetAsync("https://github.com/" + Repo + "/releases/latest/download/windows-update.json", timeout.Token))
             {
                 response.EnsureSuccessStatusCode();
-                json = await response.Content.ReadAsStringAsync();
+                release = new JavaScriptSerializer { MaxJsonLength = 8192 }.Deserialize<Asset>(await response.Content.ReadAsStringAsync());
             }
-            var releases = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }.Deserialize<Release[]>(json);
-            var latest = current;
-            foreach (var release in releases)
-            {
-                Version version;
-                if (release.draft || release.prerelease || release.tag_name == null ||
-                    !System.Text.RegularExpressions.Regex.IsMatch(release.tag_name, @"\Awindows-v\d+\.\d+\.\d+\z") ||
-                    !Version.TryParse(release.tag_name.Substring(9) + ".0", out version) || version <= latest) continue;
-                var url = "https://github.com/" + Repo + "/releases/download/" + release.tag_name + "/TikTok-Bot-Setup.exe";
-                foreach (var asset in release.assets ?? new Asset[0])
-                {
-                    if (asset.browser_download_url != url || asset.digest == null ||
-                        !System.Text.RegularExpressions.Regex.IsMatch(asset.digest, @"\Asha256:[a-fA-F0-9]{64}\z")) continue;
-                    available = asset;
-                    latest = version;
-                    break;
-                }
-            }
+            var latest = ValidateRelease(release);
+            if (latest > current) available = release;
             status.Text = available == null ? "Kein neueres Windows-Update veröffentlicht. Installiert: " + current.ToString(3)
                 : "Windows-Update " + latest.ToString(3) + " verfügbar.";
             install.Enabled = available != null;
@@ -175,16 +159,21 @@ internal sealed class Updates : UserControl
         ErrorLog.Write("Updates", message, error);
     }
 
-    private sealed class Release
+    internal static Version ValidateRelease(Asset release)
     {
-        public string tag_name { get; set; }
-        public bool draft { get; set; }
-        public bool prerelease { get; set; }
-        public Asset[] assets { get; set; }
+        Version version;
+        if (release == null || release.version == null ||
+            !System.Text.RegularExpressions.Regex.IsMatch(release.version, @"\A\d+\.\d+\.\d+\z") ||
+            !Version.TryParse(release.version + ".0", out version) || release.size <= 0 || release.digest == null ||
+            !System.Text.RegularExpressions.Regex.IsMatch(release.digest, @"\Asha256:[a-fA-F0-9]{64}\z"))
+            throw new InvalidOperationException("Ungültige Angaben in windows-update.json.");
+        release.browser_download_url = "https://github.com/" + Repo + "/releases/download/windows-v" + version.ToString(3) + "/TikTok-Bot-Setup.exe";
+        return version;
     }
 
-    private sealed class Asset
+    internal sealed class Asset
     {
+        public string version { get; set; }
         public string browser_download_url { get; set; }
         public string digest { get; set; }
         public long size { get; set; }
