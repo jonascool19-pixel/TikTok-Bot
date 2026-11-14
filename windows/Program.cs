@@ -58,13 +58,42 @@ internal sealed class BotWindow : Form
         Size = new Size(1180, 820);
         MinimumSize = new Size(1000, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
-        toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
+        toolbar.Controls.Add(new Label { Text = "Festes LIVE-Konto", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
+        room.ReadOnly = true;
+        var editTarget = new Button { Text = "Streamer ändern", AutoSize = true };
+        editTarget.Click += delegate
+        {
+            if (room.ReadOnly)
+            {
+                room.ReadOnly = false;
+                editTarget.Text = "Streamer speichern";
+                room.Focus();
+                room.SelectAll();
+                return;
+            }
+            var target = LiveAddress(room.Text);
+            if (target == null)
+            {
+                status.Text = "Gib einen @Namen oder einen vollständigen TikTok-LIVE-Link ein.";
+                return;
+            }
+            if (!SaveMonitor(target)) return;
+            room.ReadOnly = true;
+            editTarget.Text = "Streamer ändern";
+            room.Text = target;
+            if (!monitor.Checked)
+            {
+                monitor.Checked = true;
+                return;
+            }
+            if (browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(target);
+        };
         var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
         var replies = new ChatReplies(() => music.RequestsEnabled) { Dock = DockStyle.Fill };
         var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
         profile.Click += delegate
         {
-            var target = LiveAddress(room.Text);
+            var target = watchedRoom;
             if (target == null)
             {
                 status.Text = "Gib einen @Namen oder einen vollständigen TikTok-LIVE-Link ein.";
@@ -73,10 +102,10 @@ internal sealed class BotWindow : Form
             browser.CoreWebView2.Navigate(target.Substring(0, target.Length - "/live".Length));
         };
         open.EnabledChanged += delegate { profile.Enabled = open.Enabled; };
-        toolbar.Controls.AddRange(new Control[] { room, open, profile, login });
+        toolbar.Controls.AddRange(new Control[] { room, editTarget, open, profile, login });
         toolbar.Controls.Add(accountState);
         var tabs = new TabControl { Dock = DockStyle.Fill };
-        var liveTab = new TabPage("TikTok LIVE");
+        var liveTab = new TabPage("TikTok-Webansicht");
         liveTab.Controls.Add(browser);
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
@@ -99,12 +128,13 @@ internal sealed class BotWindow : Form
         comments.AudienceChanged += stats.SetAudience;
         browser.NavigationStarting += (sender, args) =>
         {
-            stats.SetRoom(LiveAddress(args.Uri));
+            if (IsAllowedRoom(args.Uri, watchedRoom)) stats.SetRoom(watchedRoom);
             stats.SetAudience(null);
         };
         var repliesTab = new TabPage("Chatantworten");
         repliesTab.Controls.Add(replies);
         tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, statsTab, updatesTab, errorTab });
+        tabs.SelectedTab = chatTab;
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var liveStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 12, 0) };
@@ -132,7 +162,7 @@ internal sealed class BotWindow : Form
             if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
         };
         liveOptions.Controls.AddRange(new Control[] { liveStatus, monitor, nickname, muteLive });
-        ConfigureLiveMonitor();
+        ConfigureLiveMonitor(() => tabs.SelectedTab == liveTab);
         var accountTab = new TabPage("Bot-Konto");
         var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
         var signIn = new Button { Text = "Bei TikTok anmelden", AutoSize = true };
@@ -179,24 +209,26 @@ internal sealed class BotWindow : Form
         AcceptButton = open;
         open.Click += delegate
         {
-            var target = LiveAddress(room.Text);
+            var target = watchedRoom;
             if (target == null)
             {
-                status.Text = "Gib einen @Namen oder einen vollständigen TikTok-LIVE-Link ein.";
+                status.Text = "Speichere zuerst ein festes LIVE-Konto über „Streamer ändern“.";
                 return;
             }
-            if (monitor.Checked) SaveMonitor(target);
             browser.CoreWebView2.Navigate(target);
         };
         login.Click += async delegate
         {
             if (!checkingAccount && !await RefreshAccount() && !IsDisposed)
+            {
+                tabs.SelectedTab = liveTab;
                 browser.CoreWebView2.Navigate("https://www.tiktok.com/login");
+            }
         };
         Shown += InitializeBrowser;
     }
 
-    private void ConfigureLiveMonitor()
+    private void ConfigureLiveMonitor(Func<bool> webViewSelected)
     {
         if (smokeTest) return;
         var file = Path.Combine(data, "watched-live.txt");
@@ -206,31 +238,45 @@ internal sealed class BotWindow : Form
             if (watchedRoom != null)
             {
                 room.Text = watchedRoom;
-                monitor.Checked = true;
+                var preference = Path.Combine(data, "live-monitor-disabled");
+                monitor.Checked = !File.Exists(preference);
             }
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
         monitor.CheckedChanged += delegate
         {
-            var target = monitor.Checked ? LiveAddress(room.Text) : null;
-            if (monitor.Checked && target == null)
+            if (monitor.Checked && watchedRoom == null)
             {
                 monitor.Checked = false;
-                status.Text = "Gib zuerst einen @Namen oder LIVE-Link ein.";
+                status.Text = "Speichere zuerst ein festes LIVE-Konto.";
                 return;
             }
-            SaveMonitor(target);
-            if (target != null && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(target);
+            try
+            {
+                Directory.CreateDirectory(data);
+                var preference = Path.Combine(data, "live-monitor-disabled");
+                if (monitor.Checked) File.Delete(preference);
+                else File.WriteAllText(preference, "");
+            }
+            catch (IOException error) { Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (UnauthorizedAccessException error) { Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
+            if (monitor.Checked && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(watchedRoom);
         };
         liveTimer.Tick += async delegate
         {
             var core = browser.CoreWebView2;
             var target = watchedRoom;
-            if (core == null || target == null) return;
+            if (core == null || target == null || !monitor.Checked) return;
             var source = core.Source;
             // Leave login, profile editing and manually opened pages alone.
-            if (!string.Equals(LiveAddress(source ?? ""), target, StringComparison.OrdinalIgnoreCase)) return;
+            var currentRoom = LiveAddress(source ?? "");
+            if (currentRoom == null) return;
+            if (!string.Equals(currentRoom, target, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!webViewSelected()) core.Navigate(target);
+                return;
+            }
             try
             {
                 var connected = await core.ExecuteScriptAsync("Boolean(document.querySelector('[data-e2e=live-chat-container], [data-e2e=chat-room], video'))");
@@ -241,16 +287,19 @@ internal sealed class BotWindow : Form
         };
     }
 
-    private void SaveMonitor(string target)
+    private bool SaveMonitor(string target)
     {
-        watchedRoom = target;
         try
         {
             Directory.CreateDirectory(data);
-            File.WriteAllText(Path.Combine(data, "watched-live.txt"), target ?? "");
+            File.WriteAllText(Path.Combine(data, "watched-live.txt"), target);
+            watchedRoom = target;
+            comments.SetConnection(false);
+            return true;
         }
         catch (IOException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
         catch (UnauthorizedAccessException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
+        return false;
     }
 
     private static string LiveAddress(string input)
@@ -263,6 +312,13 @@ internal sealed class BotWindow : Form
             (uri.Host == "www.tiktok.com" || uri.Host == "tiktok.com"))
             handle = Regex.Match(uri.AbsolutePath, @"\A/@([a-zA-Z0-9_.]{1,64})/live/?\z", RegexOptions.IgnoreCase);
         return handle.Success ? "https://www.tiktok.com/@" + handle.Groups[1].Value + "/live" : null;
+    }
+
+    private static bool IsAllowedRoom(string address, string target)
+    {
+        Uri uri;
+        return target != null && Uri.TryCreate(address, UriKind.Absolute, out uri) &&
+            uri.Host == "www.tiktok.com" && string.Equals(LiveAddress(address), target, StringComparison.OrdinalIgnoreCase);
     }
 
     private async void InitializeBrowser(object sender, EventArgs args)
@@ -330,13 +386,13 @@ internal sealed class BotWindow : Form
                 comments.SetConnection(false);
                 Report("Browseransicht ausgefallen. Starte die App neu.", result.ProcessFailedKind.ToString());
             };
-            comments.Attach(core);
+            comments.Attach(core, address => IsAllowedRoom(address, watchedRoom));
             accountTimer.Tick += CheckAccount;
             accountTimer.Start();
             open.Enabled = login.Enabled = true;
             status.Text = "Öffne deinen LIVE oder melde das Bot-Konto an.";
             liveTimer.Start();
-            if (watchedRoom != null) core.Navigate(watchedRoom);
+            if (watchedRoom != null && monitor.Checked) core.Navigate(watchedRoom);
         }
         catch (Exception error)
         {
@@ -358,7 +414,10 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("Kann ich mir einen Song wünschen?", "", false).Contains("deaktiviert") &&
             ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
             ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
-            ChatReplies.Suggest("okay", "") == null;
+            ChatReplies.Suggest("okay", "") == null &&
+            IsAllowedRoom("https://www.tiktok.com/@Creator/live?share=1", LiveAddress("@creator")) &&
+            !IsAllowedRoom("https://www.tiktok.com/@other/live", LiveAddress("@creator")) &&
+            !IsAllowedRoom("https://www.tiktok.com/@creator/live", null);
     }
 
     private async void CheckAccount(object sender, EventArgs args)

@@ -20,6 +20,7 @@ internal sealed class LiveComments : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Öffne einen TikTok-LIVE." };
     private SpeechSynthesizer speech;
     private CoreWebView2 browser;
+    private Func<string, bool> isAllowedRoom;
     private int generation;
     private bool polling;
     private bool speaking;
@@ -97,9 +98,10 @@ internal sealed class LiveComments : UserControl
         };
     }
 
-    internal void Attach(CoreWebView2 core)
+    internal void Attach(CoreWebView2 core, Func<string, bool> allowRoom)
     {
         browser = core;
+        isAllowedRoom = allowRoom;
         browser.NavigationStarting += delegate
         {
             SetConnection(false);
@@ -197,13 +199,10 @@ internal sealed class LiveComments : UserControl
     private async void Poll(object sender, EventArgs args)
     {
         if (polling || browser == null) return;
-        Uri source;
-        if (!Uri.TryCreate(browser.Source, UriKind.Absolute, out source) || source.Scheme != "https" ||
-            !source.IsDefaultPort || source.Host != "www.tiktok.com" ||
-            !System.Text.RegularExpressions.Regex.IsMatch(source.AbsolutePath, @"\A/@[a-zA-Z0-9_.]{1,64}/live/?\z"))
+        if (!isAllowedRoom(browser.Source))
         {
             SetConnection(false);
-            status.Text = "Öffne einen TikTok-LIVE.";
+            status.Text = "Bot wartet auf das gespeicherte LIVE-Konto.";
             return;
         }
 
@@ -213,7 +212,7 @@ internal sealed class LiveComments : UserControl
         {
             var result = await browser.ExecuteScriptAsync(ReadComments);
             var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
-            if (IsDisposed || current != generation) return;
+            if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
             var audience = json.Deserialize<string>(audienceResult);
             if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
             var comments = json.Deserialize<List<Comment>>(result);
