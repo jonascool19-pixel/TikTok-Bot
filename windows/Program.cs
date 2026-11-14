@@ -50,6 +50,7 @@ internal sealed class BotWindow : Form
         data = smokeTest ? Path.Combine(Path.GetTempPath(), "TikTokBot-Smoke-" + Guid.NewGuid()) :
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TikTok-Bot", "WindowsPrototype");
         ErrorLog.Configure(data);
+        comments.LoadVoicePreferences(data);
         browser.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = Path.Combine(data, "BotProfile") };
         Text = "TikTok-Bot";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -277,7 +278,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("@creator") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
-                            await LiveComments.VerifyReader(core) && VerifyErrorLog())
+                            await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data))
                             ExitCode = 0;
                     }
                     finally { Close(); }

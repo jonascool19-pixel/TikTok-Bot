@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Speech.Synthesis;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -99,6 +100,76 @@ internal sealed class LiveComments : UserControl
             StopSpeech();
         };
         timer.Start();
+    }
+
+    public sealed class VoicePreferences
+    {
+        public string Voice { get; set; }
+        public string Effect { get; set; }
+        public decimal Volume { get; set; }
+        public decimal Speed { get; set; }
+    }
+
+    internal void LoadVoicePreferences(string directory)
+    {
+        var path = Path.Combine(directory, "voice-settings.json");
+        try
+        {
+            if (File.Exists(path))
+            {
+                var saved = json.Deserialize<VoicePreferences>(File.ReadAllText(path));
+                if (saved != null)
+                {
+                    if (voice.Items.Contains(saved.Voice ?? "")) voice.SelectedItem = saved.Voice;
+                    if (style.Items.Contains(saved.Effect ?? "")) style.SelectedItem = saved.Effect;
+                    if (saved.Volume >= volume.Minimum && saved.Volume <= volume.Maximum) volume.Value = saved.Volume;
+                    if (saved.Speed >= speed.Minimum && saved.Speed <= speed.Maximum) speed.Value = saved.Speed;
+                }
+            }
+        }
+        catch (IOException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht geladen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht geladen werden.", error); }
+        catch (ArgumentException error) { ErrorLog.Write("Audio", "Stimmeinstellungen sind ungültig.", error); }
+        catch (InvalidOperationException error) { ErrorLog.Write("Audio", "Stimmeinstellungen sind ungültig.", error); }
+
+        EventHandler save = delegate
+        {
+            var preferences = new VoicePreferences
+            {
+                Voice = voice.SelectedItem as string, Effect = style.SelectedItem as string,
+                Volume = volume.Value, Speed = speed.Value
+            };
+            try
+            {
+                Directory.CreateDirectory(directory);
+                var staging = path + ".tmp";
+                File.WriteAllText(staging, json.Serialize(preferences));
+                if (File.Exists(path)) File.Replace(staging, path, null);
+                else File.Move(staging, path);
+            }
+            catch (IOException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht gespeichert werden.", error); }
+            catch (UnauthorizedAccessException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht gespeichert werden.", error); }
+        };
+        voice.SelectedIndexChanged += save;
+        style.SelectedIndexChanged += save;
+        volume.ValueChanged += save;
+        speed.ValueChanged += save;
+    }
+
+    internal static bool VerifyVoicePreferences(string directory)
+    {
+        using (var first = new LiveComments())
+        using (var second = new LiveComments())
+        {
+            first.LoadVoicePreferences(directory);
+            first.voice.SelectedIndex = first.voice.Items.Count - 2;
+            first.style.SelectedIndex = 2;
+            first.volume.Value = 42;
+            first.speed.Value = 130;
+            second.LoadVoicePreferences(directory);
+            return Equals(first.voice.SelectedItem, second.voice.SelectedItem) &&
+                second.style.SelectedIndex == 2 && second.volume.Value == 42 && second.speed.Value == 130;
+        }
     }
 
     internal static async System.Threading.Tasks.Task<bool> VerifyReader(CoreWebView2 core)
