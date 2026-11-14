@@ -377,18 +377,30 @@ internal sealed class ChatReplies : UserControl
         return result.Length <= 150 ? result : result.Substring(0, char.IsHighSurrogate(result[149]) ? 149 : 150).TrimEnd();
     }
 
+    internal const string PauseNotice = "Antwortvorschlag bereit. Sendepause aktiv.";
+    private int replyStatusVersion;
+
     private async Task ShowReply(string reply, bool test)
     {
         Add(reply);
         if (!test && autoSend.Checked && SendLiveReply != null)
         {
             var result = await SendLiveReply(reply);
-            if (!IsDisposed) status.Text = result;
+            if (IsDisposed) return;
+            var version = ++replyStatusVersion;
+            status.Text = result;
+            if (result == PauseNotice)
+            {
+                await Task.Delay(5000);
+                if (!IsDisposed && version == replyStatusVersion && status.Text == PauseNotice)
+                    status.Text = "Antwortvorschlag bereit. Sendepause beendet.";
+            }
         }
     }
 
     private void Add(string reply)
     {
+        replyStatusVersion++;
         if (history.Items.Count >= 100) history.Items.RemoveAt(0);
         history.Items.Add(reply);
         history.SelectedIndex = history.Items.Count - 1;

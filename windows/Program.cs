@@ -187,7 +187,12 @@ internal sealed class BotWindow : Form
         var musicTab = new TabPage("Musik");
         comments.ViewerComment += (handle, message) =>
         {
-            if (!string.IsNullOrEmpty(handle) && string.Equals("@" + handle, botHandle ?? configuredHandle, StringComparison.OrdinalIgnoreCase)) return;
+            var author = string.IsNullOrWhiteSpace(handle) ? null : "@" + handle.TrimStart('@');
+            if (author != null && (string.Equals(author, botHandle, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(author, configuredHandle, StringComparison.OrdinalIgnoreCase))) return;
+            DateTime sentAt;
+            if (recentBotReplies.TryGetValue(message.Trim(), out sentAt) &&
+                DateTime.UtcNow - sentAt < TimeSpan.FromSeconds(30)) return;
             if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
@@ -668,7 +673,10 @@ internal sealed class BotWindow : Form
     }
 
     private bool sendingReply;
+    private static readonly TimeSpan ReplyPause = TimeSpan.FromSeconds(5);
     private DateTime nextReplyTime;
+    private readonly System.Collections.Generic.Dictionary<string, DateTime> recentBotReplies =
+        new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
 
     private System.Threading.Tasks.Task<string> SendLiveReply(string reply) { return SendLiveReply(reply, false); }
 
@@ -680,7 +688,7 @@ internal sealed class BotWindow : Form
         if (core == null || !comments.ChatAvailable || !IsAllowedRoom(core.Source, target))
             return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
         if (sendingReply || (!musicChoice && DateTime.UtcNow < nextReplyTime))
-            return fallback + "Sendepause aktiv.";
+            return ChatReplies.PauseNotice;
         sendingReply = true;
         try
         {
@@ -695,6 +703,10 @@ internal sealed class BotWindow : Form
             if (configuredHandle != null && botHandle != null && !string.Equals(configuredHandle, botHandle, StringComparison.OrdinalIgnoreCase))
                 return fallback + "Das angemeldete Konto weicht vom gespeicherten Bot-Konto ab.";
 
+            var now = DateTime.UtcNow;
+            foreach (var text in new System.Collections.Generic.List<string>(recentBotReplies.Keys))
+                if (now - recentBotReplies[text] >= TimeSpan.FromSeconds(30)) recentBotReplies.Remove(text);
+            recentBotReplies[reply.Trim()] = now;
             var json = new System.Web.Script.Serialization.JavaScriptSerializer();
             var result = await core.ExecuteScriptAsync(@"(() => {
                 if ((location.origin + location.pathname.replace(/\/$/, '')).toLowerCase() !== " + json.Serialize(target.ToLowerInvariant()) + @") return 'room';
@@ -735,6 +747,7 @@ internal sealed class BotWindow : Form
                 send.click();
                 return 'submitted';
             })()");
+            if (result != "\"enter\"" && result != "\"submitted\"") recentBotReplies.Remove(reply.Trim());
             if (result == "\"enter\"")
             {
                 if (IsDisposed || target != watchedRoom || !comments.ChatAvailable || !IsAllowedRoom(core.Source, target))
@@ -743,7 +756,7 @@ internal sealed class BotWindow : Form
                 const string enter = "\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13";
                 await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"text\":\"\\r\"," + enter + "}");
                 await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\"," + enter + "}");
-                nextReplyTime = DateTime.UtcNow.AddSeconds(12);
+                nextReplyTime = DateTime.UtcNow.Add(ReplyPause);
                 await System.Threading.Tasks.Task.Delay(500);
                 if (IsDisposed || target != watchedRoom || !IsAllowedRoom(core.Source, target))
                     return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
@@ -761,7 +774,7 @@ internal sealed class BotWindow : Form
             }
             if (result == "\"submitted\"")
             {
-                nextReplyTime = DateTime.UtcNow.AddSeconds(12);
+                nextReplyTime = DateTime.UtcNow.Add(ReplyPause);
                 return "Antwort an TikTok übergeben. Die Veröffentlichung siehst du im LIVE-Chat.";
             }
             switch (result)

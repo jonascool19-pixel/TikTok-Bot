@@ -80,16 +80,17 @@ internal sealed class LiveComments : UserControl
     const rowSelector = '[data-e2e=""gift-message""], [data-e2e=""live-gift-message""], [data-e2e=""gift-chat-message""], [data-e2e=""live-chat-gift""], [data-e2e=""gift-notice""], [data-e2e=""live-gift-notice""], [data-message-type=""gift""]';
     const giftSelector = '[data-e2e=""gift-name""], [data-e2e=""gift-title""], [data-e2e=""live-gift-name""]';
     const iconSelector = 'img[data-e2e=""gift-icon""][alt], [data-e2e=""gift-image""] img[alt], img[data-e2e=""gift-image""][alt]';
-    const markerSelector = rowSelector + ', ' + giftSelector + ', ' + iconSelector;
+    const textRowSelector = '[data-e2e=""chat-message""], [data-e2e=""chat-notice""], [role=""listitem""]';
+    const markerSelector = rowSelector + ', ' + giftSelector + ', ' + iconSelector + ', ' + textRowSelector;
     function scan(node, fresh) {
         if (node.nodeType !== 1) return;
         const rows = new Set();
-        const ancestor = node.closest(rowSelector);
+        const ancestor = node.closest(rowSelector + ', ' + textRowSelector);
         if (ancestor) rows.add(ancestor);
         const markers = Array.from(node.querySelectorAll(markerSelector));
         if (node.matches(markerSelector)) markers.unshift(node);
         for (const marker of markers) {
-            const row = marker.closest(rowSelector) || marker.closest('[data-e2e=""chat-message""]');
+            const row = marker.closest(rowSelector) || marker.closest(textRowSelector);
             if (row) rows.add(row);
         }
         for (const row of rows) {
@@ -97,11 +98,19 @@ internal sealed class LiveComments : UserControl
             const gift = row.querySelector(giftSelector);
             const icon = row.querySelector(iconSelector);
             const name = ((sender && sender.textContent.trim()) || row.getAttribute('data-sender-name') || '').slice(0,80);
+            const text = name && row.textContent.trim();
+            const notice = text && text.startsWith(name) && text.slice(name.length).trim();
+            const label = notice && notice.match(/^(?:sent\s+(?:(?:a|an)\s+)?(?:a gift\s*[:–-]\s*)?|hat\s+(?:ein Geschenk\s*[:–-]\s*)?)(.{1,80}?)(?:\s+geschickt|\s+gesendet)?(?:\s*[×x]\s*(\d+))?\s*[.!]?$/i);
+            const plainIcon = row.querySelector('img[alt]:not([alt=""""])');
+            const messageBody = row.querySelector('.break-words.align-middle');
+            const structured = row.matches(rowSelector) || gift || icon;
+            if (!structured && (!root.contains(row) || messageBody || !label || !plainIcon || (/^hat\s/i.test(notice) && !/\b(geschickt|gesendet|Geschenk)\b/i.test(notice)))) continue;
             const title = ((gift && gift.textContent.trim()) || (icon && icon.alt.trim()) ||
+                (label && label[1]) ||
                 row.getAttribute('data-gift-name') || '').slice(0,80);
             if (!name || !title) continue;
             const countText = row.getAttribute('data-gift-count') ||
-                row.querySelector('[data-e2e=""gift-count""]')?.textContent || '';
+                row.querySelector('[data-e2e=""gift-count""]')?.textContent || (label && label[2]) || '';
             const count = Math.min(9999, Number(countText.match(/\d+/)?.[0]) || 1);
             const key = JSON.stringify([name,title,count]);
             if (fresh && seen.get(row) !== key && pending.length < 100) pending.push({Name:name, Title:title, Count:count});
@@ -114,7 +123,8 @@ internal sealed class LiveComments : UserControl
     const observer = new MutationObserver(records => {
         for (const record of records) {
             const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-            if (target && target.closest(rowSelector)) scan(target.closest(rowSelector), true);
+            const row = target && target.closest(rowSelector + ', ' + textRowSelector);
+            if (row) scan(row, true);
             if (record.type === 'childList')
                 for (const node of record.addedNodes) scan(node,true);
         }
@@ -322,22 +332,8 @@ internal sealed class LiveComments : UserControl
             var playback = json.Deserialize<double?>(playbackResult);
             var progressing = IsPlaybackAdvancing(lastPlayback, playback);
             lastPlayback = playback;
-            if (!progressing)
-            {
-                SetConnection(false);
-                if (AudienceChanged != null) AudienceChanged(null);
-                status.Text = "Warte auf ein laufendes LIVE-Video.";
-                return;
-            }
-            var result = await browser.ExecuteScriptAsync(ReadComments);
             var giftResult = await browser.ExecuteScriptAsync(ReadGifts);
-            var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
             if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
-            var audience = json.Deserialize<string>(audienceResult);
-            if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
-            var comments = json.Deserialize<List<Comment>>(result);
-            SetConnection(comments != null);
-            status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             foreach (var gift in json.Deserialize<List<Gift>>(giftResult))
             {
                 var announcement = GiftAnnouncement(gift.Name, gift.Title, gift.Count);
@@ -346,6 +342,21 @@ internal sealed class LiveComments : UserControl
                 history.TopIndex = history.Items.Count - 1;
                 if (readGifts.Checked) Speak(announcement, true);
             }
+            if (!progressing)
+            {
+                SetConnection(false);
+                if (AudienceChanged != null) AudienceChanged(null);
+                status.Text = "Warte auf ein laufendes LIVE-Video.";
+                return;
+            }
+            var result = await browser.ExecuteScriptAsync(ReadComments);
+            var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
+            if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
+            var audience = json.Deserialize<string>(audienceResult);
+            if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
+            var comments = json.Deserialize<List<Comment>>(result);
+            SetConnection(comments != null);
+            status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
             foreach (var comment in comments)
             {
