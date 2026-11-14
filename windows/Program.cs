@@ -107,6 +107,14 @@ internal sealed class BotWindow : Form
         tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, statsTab, updatesTab, errorTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
+        var liveStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 12, 0) };
+        Action<bool> updateLiveStatus = connected =>
+        {
+            liveStatus.ForeColor = connected ? Color.DarkGreen : Color.Firebrick;
+            liveStatus.Text = connected ? "● LIVE verbunden" : "● LIVE nicht verbunden";
+        };
+        updateLiveStatus(false);
+        comments.ConnectionChanged += updateLiveStatus;
         var nickname = new Button { Text = "Bot-Profil / Spitzname ändern", AutoSize = true };
         nickname.Click += delegate
         {
@@ -123,7 +131,7 @@ internal sealed class BotWindow : Form
         {
             if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
         };
-        liveOptions.Controls.AddRange(new Control[] { monitor, nickname, muteLive });
+        liveOptions.Controls.AddRange(new Control[] { liveStatus, monitor, nickname, muteLive });
         ConfigureLiveMonitor();
         var accountTab = new TabPage("Bot-Konto");
         var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
@@ -317,7 +325,11 @@ internal sealed class BotWindow : Form
                 else
                     Report("Seite konnte nicht geladen werden.", result.WebErrorStatus + ", HTTP " + result.HttpStatusCode);
             };
-            core.ProcessFailed += (source, result) => Report("Browseransicht ausgefallen. Starte die App neu.", result.ProcessFailedKind.ToString());
+            core.ProcessFailed += (source, result) =>
+            {
+                comments.SetConnection(false);
+                Report("Browseransicht ausgefallen. Starte die App neu.", result.ProcessFailedKind.ToString());
+            };
             comments.Attach(core);
             accountTimer.Tick += CheckAccount;
             accountTimer.Start();

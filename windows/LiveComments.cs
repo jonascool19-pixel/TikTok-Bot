@@ -30,6 +30,14 @@ internal sealed class LiveComments : UserControl
     internal event Action<string, string> ViewerActivity;
     internal event Action<string> AudienceChanged;
     internal bool ChatAvailable { get; private set; }
+    internal event Action<bool> ConnectionChanged;
+
+    internal void SetConnection(bool connected)
+    {
+        if (ChatAvailable == connected) return;
+        ChatAvailable = connected;
+        if (ConnectionChanged != null) ConnectionChanged(connected);
+    }
 
     private const string ReadComments = @"
 (() => {
@@ -94,7 +102,7 @@ internal sealed class LiveComments : UserControl
         browser = core;
         browser.NavigationStarting += delegate
         {
-            ChatAvailable = false;
+            SetConnection(false);
             generation++;
             history.Items.Clear();
             StopSpeech();
@@ -194,6 +202,7 @@ internal sealed class LiveComments : UserControl
             !source.IsDefaultPort || source.Host != "www.tiktok.com" ||
             !System.Text.RegularExpressions.Regex.IsMatch(source.AbsolutePath, @"\A/@[a-zA-Z0-9_.]{1,64}/live/?\z"))
         {
+            SetConnection(false);
             status.Text = "Öffne einen TikTok-LIVE.";
             return;
         }
@@ -208,7 +217,7 @@ internal sealed class LiveComments : UserControl
             var audience = json.Deserialize<string>(audienceResult);
             if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
             var comments = json.Deserialize<List<Comment>>(result);
-            ChatAvailable = comments != null;
+            SetConnection(comments != null);
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
             foreach (var comment in comments)
@@ -223,9 +232,16 @@ internal sealed class LiveComments : UserControl
                 if (onViewer != null) onViewer(comment.Handle, comment.Text);
             }
         }
-        catch (InvalidOperationException error) { if (!IsDisposed) ReportError("LIVE-Chat", "LIVE-Chat vorübergehend nicht verfügbar.", error); }
-        catch (ArgumentException error) { if (!IsDisposed) ReportError("LIVE-Chat", "LIVE-Chat konnte nicht gelesen werden.", error); }
+        catch (InvalidOperationException error) { ReportPollError(current, "LIVE-Chat vorübergehend nicht verfügbar.", error); }
+        catch (ArgumentException error) { ReportPollError(current, "LIVE-Chat konnte nicht gelesen werden.", error); }
         finally { polling = false; }
+    }
+
+    private void ReportPollError(int current, string message, Exception error)
+    {
+        if (IsDisposed || current != generation) return;
+        SetConnection(false);
+        ReportError("LIVE-Chat", message, error);
     }
 
     private void Speak(string text)
