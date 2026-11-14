@@ -126,7 +126,7 @@ internal sealed class YouTubeQueue : UserControl
                         new URLSearchParams(location.search).get('" + (music ? "q" : "search_query") + @"') !== " +
                         new JavaScriptSerializer().Serialize(query) + @") return null;
                     return Array.from(document.querySelectorAll('" + (music ? "ytmusic-responsive-list-item-renderer a[href*=\"watch?v=\"], ytmusic-card-shelf-renderer a[href*=\"watch?v=\"]" : "ytd-video-renderer a#video-title[href^=\"/watch?v=\"]") + @"'))
-                        .slice(0, 12).map(a => ({ Link: a.href, Title: a.textContent.trim() }));
+                        .filter(a => a.textContent.trim()).slice(0, 12).map(a => ({ Link: a.href, Title: a.textContent.trim() }));
                 })()");
                 var rows = new JavaScriptSerializer().Deserialize<SearchRow[]>(result);
                 if (rows == null || rows.Length == 0) continue;

@@ -355,6 +355,12 @@ internal sealed class MusicQueue : UserControl
         return true;
     }
 
+    private void QueueRequest(FileInfo file)
+    {
+        if (queue.Items.Count < 100) queue.Items.Add(file);
+        if (autoPlay.Checked && !playing) Next();
+    }
+
     private sealed class Choice
     {
         internal FileInfo[] Tracks;
