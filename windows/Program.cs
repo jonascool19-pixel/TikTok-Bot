@@ -167,7 +167,7 @@ internal sealed class BotWindow : Form
         header.Controls.AddRange(new Control[] { toolbar, bell, brand });
         toolbar.Padding = new Padding(0, 3, 0, 0);
         music.WishAdded += title => notify("Musikwunsch: " + title);
-        var tabs = AppTheme.CreateTabs(() => theme);
+        var tabs = new AppTabs();
         var liveTab = new TabPage("TikTok-Webansicht");
         liveTab.Controls.Add(browser);
         var chatTab = new TabPage("Kommentare und Stimme");
@@ -222,7 +222,7 @@ internal sealed class BotWindow : Form
             tabs.SelectedTab = settingsTab;
             menu.SelectedItem = page.Text;
         };
-        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, statsTab, settingsTab });
+        tabs.AddPages(chatTab, repliesTab, musicTab, statsTab, settingsTab);
         tabs.SelectedTab = chatTab;
         Controls.AddRange(new Control[] { tabs, settingsFeedback, status, account, header });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
@@ -309,7 +309,7 @@ internal sealed class BotWindow : Form
         var designsTab = new TabPage("Designs");
         var designOptions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
         var designTitle = new Label { Text = "Design auswählen", Font = AppTheme.HeadingFont, AutoSize = true };
-        var designPicker = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250, AccessibleName = "Design" };
+        var designPicker = new ThemeComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250, AccessibleName = "Design" };
         var designPath = Path.Combine(data, "design.txt");
         try { if (File.Exists(designPath)) theme = AppTheme.Find(File.ReadAllText(designPath).Trim()); }
         catch (IOException error) { ErrorLog.Write("Designs", "Design konnte nicht geladen werden.", error); }

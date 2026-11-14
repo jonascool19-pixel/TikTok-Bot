@@ -101,7 +101,7 @@ internal sealed class MusicQueue : UserControl
         searchTools.Controls.Add(autoPlay);
         AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
         requests.DoubleClick += delegate { Search(requests.SelectedItem as string); };
-        var sources = new TabControl { Dock = DockStyle.Fill };
+        var sources = new AppTabs();
         var local = new TabPage("Lokale Dateien");
         local.Controls.AddRange(new Control[] { queue, status, tools });
         var remote = new TabPage("Spotify und Musikwünsche");
@@ -150,7 +150,7 @@ internal sealed class MusicQueue : UserControl
         var youtubeTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         AddButton(youtubeTools, "YouTube öffnen / anmelden", () => OpenYouTube("https://www.youtube.com/"));
         youtube.Controls.Add(youtubeTools);
-        sources.TabPages.AddRange(new[] { local, remote, spotifyQueue, youtubeMusic, youtube });
+        sources.AddPages(local, remote, spotifyQueue, youtubeMusic, youtube);
         Controls.Add(sources);
         collect.CheckedChanged += delegate
         {

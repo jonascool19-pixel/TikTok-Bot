@@ -11,8 +11,8 @@ internal sealed class LiveComments : UserControl
 {
     private readonly ListBox history = new ListBox { Dock = DockStyle.Fill, AccessibleName = "LIVE-Kommentare" };
     private readonly CheckBox read = new CheckBox { Text = "Kommentare vorlesen", AutoSize = true };
-    private readonly ComboBox voice = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, AccessibleName = "Stimme" };
-    private readonly ComboBox style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135, AccessibleName = "Stimmeffekt" };
+    private readonly ComboBox voice = new ThemeComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, AccessibleName = "Stimme" };
+    private readonly ComboBox style = new ThemeComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135, AccessibleName = "Stimmeffekt" };
     private readonly NumericUpDown volume = new NumericUpDown { Value = 75, Maximum = 100, Width = 55, AccessibleName = "Lautstärke" };
     private readonly NumericUpDown speed = new NumericUpDown { Value = 100, Minimum = 50, Maximum = 200, Increment = 10, Width = 60, AccessibleName = "Sprechtempo in Prozent" };
     private readonly Button saveVoice = new Button { Text = "Stimme speichern", AutoSize = true };

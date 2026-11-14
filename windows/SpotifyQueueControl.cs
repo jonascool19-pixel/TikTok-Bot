@@ -22,7 +22,7 @@ internal sealed class SpotifyQueueControl : UserControl
     private readonly Label status = new Label { AutoSize = true, Text = "Spotify Premium und eine Spotify-App mit Redirect-URI " + Redirect + " erforderlich." };
     private readonly Button connect = new Button { Text = "Spotify verbinden", AutoSize = true };
     private readonly Button add = new Button { Text = "Zur Spotify-Warteschlange hinzufügen", AutoSize = true, Enabled = false };
-    private readonly ComboBox results = new ComboBox { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Spotify-Suchergebnisse" };
+    private readonly ComboBox results = new ThemeComboBox { Width = 450, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Spotify-Suchergebnisse" };
     private readonly string sessionPath;
     private readonly Action<bool> saved;
     private string accessToken;

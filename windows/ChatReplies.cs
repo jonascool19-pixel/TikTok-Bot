@@ -34,7 +34,7 @@ internal sealed class ChatReplies : UserControl
     private readonly Button copy = new Button { Text = "Antwort kopieren", AutoSize = true };
     private readonly CheckBox useAi = new CheckBox { Text = "Lokale KI", AutoSize = true };
     private readonly CheckBox learn = new CheckBox { Text = "Lernvorschläge aus dem LIVE sammeln", AutoSize = true };
-    private readonly ComboBox candidates = new ComboBox { Width = 240, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Lernvorschlag auswählen" };
+    private readonly ComboBox candidates = new ThemeComboBox { Width = 240, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Lernvorschlag auswählen" };
     private readonly Dictionary<string, string> suggested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<string> context = new Queue<string>();
     private bool generating;
@@ -43,8 +43,8 @@ internal sealed class ChatReplies : UserControl
 
     internal ChatReplies(Func<bool> requestsEnabled, string directory, Action<bool> saved)
     {
-        var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
-        var example = new ComboBox { Width = 290, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Beispiel auswählen" };
+        var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12), Tag = "card" };
+        var example = new ThemeComboBox { Width = 290, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Beispiel auswählen" };
         example.Items.Add("Beispiel auswählen …");
         example.Items.AddRange(Examples);
         example.SelectedIndex = 0;
@@ -67,7 +67,9 @@ internal sealed class ChatReplies : UserControl
             status.Text = useAi.Checked ? "Die mitgelieferte KI läuft lokal. Du kannst jetzt eine Antwort testen."
                 : "Lokale KI ausgeschaltet. Feste Antworten sind verfügbar.";
         };
-        Controls.AddRange(new Control[] { history, status, tools });
+        var resultCard = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), Tag = "card" };
+        resultCard.Controls.AddRange(new Control[] { history, new Label { Dock = DockStyle.Top, Height = 30, Text = "Antwortvorschläge", Font = AppTheme.HeadingFont } });
+        Controls.AddRange(new Control[] { resultCard, status, tools });
         var rulesPath = Path.Combine(directory, "custom-chat-replies.json");
         var learningPath = Path.Combine(directory, "chat-learning.json");
         var gamePath = Path.Combine(directory, "chat-game.txt");
@@ -79,8 +81,8 @@ internal sealed class ChatReplies : UserControl
             if (File.Exists(gamePath)) game.Text = File.ReadAllText(gamePath);
         }
         catch (Exception error) { ErrorLog.Write("Chatantworten", "Eigene Einstellungen konnten nicht geladen werden.", error); }
-        var editor = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(8) };
-        var selectRule = new ComboBox { Width = 220, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Eigene Chatantwort auswählen" };
+        var editor = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(12), Tag = "card" };
+        var selectRule = new ThemeComboBox { Width = 220, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Eigene Chatantwort auswählen" };
         var question = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "Eigene Frage" };
         var response = new TextBox { Width = 270, MaxLength = 150, AccessibleName = "Eigene Antwort" };
         var saveRule = new Button { Text = "Antwort speichern", AutoSize = true };
@@ -182,7 +184,7 @@ internal sealed class ChatReplies : UserControl
         };
         Controls.Add(editor);
         editor.BringToFront();
-        history.BringToFront();
+        resultCard.BringToFront();
         test.Click += async delegate
         {
             await Reply(sample.Text, requestsEnabled(), true);
