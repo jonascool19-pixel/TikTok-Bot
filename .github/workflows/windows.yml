@@ -67,7 +67,7 @@ jobs:
           $sources += $versionSource
           $icon = (Resolve-Path windows/TikTok-Bot.ico).Path
           $wpf = Join-Path (Split-Path $csc) 'WPF'
-          & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/win32icon:$icon" "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" "/reference:$wpf\System.Speech.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll $sources
+          & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/win32icon:$icon" "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" "/reference:$wpf\System.Speech.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Security.dll $sources
           if ($LASTEXITCODE -ne 0) { throw 'Application compilation failed.' }
           $inno = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
           & $inno "/DAppVersion=$version" windows/installer.iss

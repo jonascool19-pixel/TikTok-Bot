@@ -28,7 +28,7 @@ internal sealed class MusicQueue : UserControl
     internal bool RequestsEnabled { get { return collect.Checked; } }
     internal event Action<string> WishAdded;
 
-    internal MusicQueue(Func<bool> chatAvailable)
+    internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved)
     {
         this.chatAvailable = chatAvailable;
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
@@ -41,10 +41,23 @@ internal sealed class MusicQueue : UserControl
             if (queue.SelectedIndex >= 0) queue.Items.RemoveAt(queue.SelectedIndex);
         });
         var volume = new NumericUpDown { Maximum = 100, Value = 35, Width = 55, AccessibleName = "Musiklautstärke" };
+        var volumePath = Path.Combine(directory, "music-volume.txt");
+        try
+        {
+            int value;
+            if (File.Exists(volumePath) && int.TryParse(File.ReadAllText(volumePath), out value) && value >= 0 && value <= 100)
+                volume.Value = value;
+        }
+        catch (IOException error) { ErrorLog.Write("Musik", "Lautstärke konnte nicht geladen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Musik", "Lautstärke konnte nicht geladen werden.", error); }
         tools.Controls.Add(new Label { Text = "Lautstärke %", AutoSize = true });
         tools.Controls.Add(volume);
         player.Volume = (double)volume.Value / 100;
-        volume.ValueChanged += delegate { player.Volume = (double)volume.Value / 100; };
+        volume.ValueChanged += delegate
+        {
+            player.Volume = (double)volume.Value / 100;
+            ChatReplies.Persist(volumePath, ((int)volume.Value).ToString(), saved);
+        };
         player.MediaEnded += delegate { if (playing) Next(); };
         player.MediaFailed += (sender, error) =>
         {
@@ -114,10 +127,14 @@ internal sealed class MusicQueue : UserControl
             SearchYouTubeMusic(ytQuery.Text);
         };
         youtubeRequests.DoubleClick += delegate { SearchYouTubeMusic(youtubeRequests.SelectedItem as string); };
-        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, ytStatus, ytTools });
+        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Bottom, Height = 155 }, ytStatus, ytTools });
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
-        spotifyQueue.Controls.Add(new SpotifyQueueControl { Dock = DockStyle.Fill });
-        sources.TabPages.AddRange(new[] { local, remote, spotifyQueue, youtubeMusic });
+        spotifyQueue.Controls.Add(new SpotifyQueueControl(directory, saved) { Dock = DockStyle.Fill });
+        var youtube = new TabPage("YouTube");
+        var youtubeTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        AddButton(youtubeTools, "YouTube öffnen / anmelden", () => OpenYouTube("https://www.youtube.com/"));
+        youtube.Controls.Add(youtubeTools);
+        sources.TabPages.AddRange(new[] { local, remote, spotifyQueue, youtubeMusic, youtube });
         Controls.Add(sources);
         collect.CheckedChanged += delegate
         {

@@ -33,11 +33,15 @@ internal sealed class ChatReplies : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 30, Text = "Vorschläge erscheinen hier. Du sendest sie im TikTok-Chat." };
     private readonly Button copy = new Button { Text = "Antwort kopieren", AutoSize = true };
     private readonly CheckBox useAi = new CheckBox { Text = "Lokale KI", AutoSize = true };
+    private readonly CheckBox learn = new CheckBox { Text = "Lernvorschläge aus dem LIVE sammeln", AutoSize = true };
+    private readonly ComboBox candidates = new ComboBox { Width = 240, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Lernvorschlag auswählen" };
+    private readonly Dictionary<string, string> suggested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<string> context = new Queue<string>();
     private bool generating;
     private int liveSession;
+    private Dictionary<string, string> custom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    internal ChatReplies(Func<bool> requestsEnabled)
+    internal ChatReplies(Func<bool> requestsEnabled, string directory, Action<bool> saved)
     {
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         var example = new ComboBox { Width = 290, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Beispiel auswählen" };
@@ -64,6 +68,121 @@ internal sealed class ChatReplies : UserControl
                 : "Lokale KI ausgeschaltet. Feste Antworten sind verfügbar.";
         };
         Controls.AddRange(new Control[] { history, status, tools });
+        var rulesPath = Path.Combine(directory, "custom-chat-replies.json");
+        var learningPath = Path.Combine(directory, "chat-learning.json");
+        var gamePath = Path.Combine(directory, "chat-game.txt");
+        var serializer = new JavaScriptSerializer();
+        try
+        {
+            if (File.Exists(rulesPath))
+                custom = new Dictionary<string, string>(serializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(rulesPath)), StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(gamePath)) game.Text = File.ReadAllText(gamePath);
+        }
+        catch (Exception error) { ErrorLog.Write("Chatantworten", "Eigene Einstellungen konnten nicht geladen werden.", error); }
+        var editor = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(8) };
+        var selectRule = new ComboBox { Width = 220, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Eigene Chatantwort auswählen" };
+        var question = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "Eigene Frage" };
+        var response = new TextBox { Width = 270, MaxLength = 150, AccessibleName = "Eigene Antwort" };
+        var saveRule = new Button { Text = "Antwort speichern", AutoSize = true };
+        var remove = new Button { Text = "Antwort löschen", AutoSize = true };
+        var saveGame = new Button { Text = "Spiel speichern", AutoSize = true };
+        tools.Controls.Add(saveGame);
+        saveGame.Click += delegate { Persist(gamePath, game.Text, saved); };
+        Action reload = delegate
+        {
+            selectRule.Items.Clear();
+            foreach (var key in custom.Keys) selectRule.Items.Add(key);
+        };
+        reload();
+        selectRule.SelectedIndexChanged += delegate
+        {
+            var key = selectRule.SelectedItem as string;
+            if (key == null) return;
+            question.Text = key;
+            response.Text = custom[key];
+        };
+        saveRule.Click += delegate
+        {
+            var key = NormalizeQuestion(question.Text);
+            var value = response.Text.Trim();
+            if (key.Length == 0 || value.Length == 0) { status.Text = "Gib eine Frage und eine Antwort ein."; return; }
+            var updated = new Dictionary<string, string>(custom, StringComparer.OrdinalIgnoreCase);
+            var previous = selectRule.SelectedItem as string;
+            if (previous != null && !string.Equals(previous, key, StringComparison.OrdinalIgnoreCase)) updated.Remove(previous);
+            updated[key] = value;
+            if (!Persist(rulesPath, serializer.Serialize(updated), saved)) return;
+            custom = updated;
+            reload();
+            selectRule.SelectedItem = key;
+        };
+        remove.Click += delegate
+        {
+            var key = selectRule.SelectedItem as string;
+            if (key == null) return;
+            var updated = new Dictionary<string, string>(custom, StringComparer.OrdinalIgnoreCase);
+            updated.Remove(key);
+            if (!Persist(rulesPath, serializer.Serialize(updated), saved)) return;
+            custom = updated;
+            reload();
+            question.Clear();
+            response.Clear();
+        };
+        var newRule = new Button { Text = "Neue Antwort", AutoSize = true };
+        newRule.Click += delegate { selectRule.SelectedIndex = -1; question.Clear(); response.Clear(); question.Focus(); };
+        editor.Controls.AddRange(new Control[] { new Label { Text = "Eigene Chatantworten", AutoSize = true }, selectRule, newRule,
+            new Label { Text = "Frage", AutoSize = true }, question, new Label { Text = "Antwort", AutoSize = true }, response, saveRule, remove });
+        try
+        {
+            if (File.Exists(learningPath))
+                foreach (var item in serializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(learningPath)))
+                {
+                    if (suggested.Count == 50) break;
+                    suggested[item.Key] = item.Value;
+                    candidates.Items.Add(item.Key);
+                }
+        }
+        catch (Exception error) { ErrorLog.Write("Chatantworten", "Lernvorschläge konnten nicht geladen werden.", error); }
+        var removeCandidate = new Button { Text = "Lernvorschlag verwerfen", AutoSize = true };
+        var loadCandidate = new Button { Text = "Lernvorschlag bearbeiten", AutoSize = true };
+        loadCandidate.Click += delegate
+        {
+            var key = candidates.SelectedItem as string;
+            if (key == null) return;
+            selectRule.SelectedIndex = -1;
+            question.Text = key;
+            response.Text = suggested[key];
+        };
+        Action removeSelectedCandidate = delegate
+        {
+            var key = candidates.SelectedItem as string;
+            if (key == null) return;
+            var remaining = new Dictionary<string, string>(suggested, StringComparer.OrdinalIgnoreCase);
+            remaining.Remove(key);
+            if (!Persist(learningPath, serializer.Serialize(remaining), saved)) return;
+            suggested.Remove(key);
+            candidates.Items.Remove(key);
+        };
+        removeCandidate.Click += delegate { removeSelectedCandidate(); };
+        saveRule.Click += delegate
+        {
+            var key = candidates.SelectedItem as string;
+            if (key != null && string.Equals(key, NormalizeQuestion(question.Text), StringComparison.OrdinalIgnoreCase) &&
+                custom.ContainsKey(key) && custom[key] == response.Text.Trim()) removeSelectedCandidate();
+        };
+        editor.Controls.AddRange(new Control[] { learn, candidates, loadCandidate, removeCandidate });
+        LearningCandidate += (input, output) =>
+        {
+            var key = NormalizeQuestion(input);
+            if (key.Length == 0 || key.Length > 150 || suggested.ContainsKey(key) || custom.ContainsKey(key) || suggested.Count >= 50) return;
+            var next = new Dictionary<string, string>(suggested, StringComparer.OrdinalIgnoreCase);
+            next[key] = output;
+            if (!Persist(learningPath, serializer.Serialize(next), delegate { })) return;
+            suggested[key] = output;
+            candidates.Items.Add(key);
+        };
+        Controls.Add(editor);
+        editor.BringToFront();
+        history.BringToFront();
         test.Click += async delegate
         {
             await Reply(sample.Text, requestsEnabled(), true);
@@ -85,6 +204,7 @@ internal sealed class ChatReplies : UserControl
     {
         bind("chat-replies-enabled", enabled);
         bind("chat-local-ai", useAi);
+        bind("chat-learning-enabled", learn);
     }
 
     internal async void ConsiderLiveComment(string text, bool requestsEnabled)
@@ -102,7 +222,8 @@ internal sealed class ChatReplies : UserControl
     private async Task Reply(string text, bool requestsEnabled, bool test)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        var result = Suggest(text, game.Text, requestsEnabled);
+        string result;
+        if (!custom.TryGetValue(NormalizeQuestion(text), out result)) result = Suggest(text, game.Text, requestsEnabled);
         if (result != null) { Add(result); return; }
         if (!useAi.Checked)
         {
@@ -134,7 +255,11 @@ internal sealed class ChatReplies : UserControl
                 "<|im_start|>user\n" + data + "<|im_end|>\n<|im_start|>assistant\n";
             var output = CleanAiReply(await Task.Run(() => RunModel(prompt)), text);
             if (IsDisposed || session != liveSession || (!test && !enabled.Checked)) return;
-            if (output != null) Add(output);
+            if (output != null)
+            {
+                Add(output);
+                if (!test && learn.Checked && LearningCandidate != null) LearningCandidate(text, output);
+            }
             else if (test) status.Text = "Die lokale KI schlägt keine Antwort vor.";
         }
         catch (Exception error)
@@ -144,6 +269,35 @@ internal sealed class ChatReplies : UserControl
             ErrorLog.Write("Chatantworten", "Lokale KI-Anfrage fehlgeschlagen.", error);
         }
         finally { generating = false; }
+    }
+
+    private event Action<string, string> LearningCandidate;
+
+    internal static string NormalizeQuestion(string text)
+    {
+        return Regex.Replace(text.Trim().TrimEnd('?', '!', '.', ',').TrimEnd(), @"\s+", " ");
+    }
+
+    internal static bool Persist(string path, string value, Action<bool> saved)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var temp = path + "." + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllText(temp, value);
+                if (File.Exists(path)) File.Replace(temp, path, null);
+                else File.Move(temp, path);
+            }
+            finally { File.Delete(temp); }
+            saved(true);
+            return true;
+        }
+        catch (IOException error) { ErrorLog.Write("Chatantworten", "Einstellung konnte nicht gespeichert werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Chatantworten", "Einstellung konnte nicht gespeichert werden.", error); }
+        saved(false);
+        return false;
     }
 
     private static string RunModel(string prompt)

@@ -103,7 +103,13 @@ internal sealed class Updates : UserControl
             using (var response = await Client.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
             {
                 response.EnsureSuccessStatusCode();
-                var total = response.Content.Headers.ContentLength ?? asset.size;
+                var total = asset.size > 0 ? asset.size : response.Content.Headers.ContentLength.GetValueOrDefault();
+                if (total > 0)
+                {
+                    progress.Style = ProgressBarStyle.Continuous;
+                    progress.Value = 0;
+                    status.Text = "Download: 0 %";
+                }
                 var watch = Stopwatch.StartNew();
                 long received = 0;
                 long updatedAt = -250;
@@ -132,7 +138,7 @@ internal sealed class Updates : UserControl
                     }
                 }
             }
-            status.Text = "Download abgeschlossen. Prüfsumme wird geprüft …";
+            status.Text = "Download: 100 % · Prüfsumme wird geprüft …";
             progress.Style = ProgressBarStyle.Marquee;
             var digest = await Task.Run(() =>
             {

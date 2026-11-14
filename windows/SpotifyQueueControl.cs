@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -20,19 +21,34 @@ internal sealed class SpotifyQueueControl : UserControl
     private readonly Button connect = new Button { Text = "Spotify verbinden", AutoSize = true };
     private readonly Button add = new Button { Text = "In Spotify einreihen", AutoSize = true, Enabled = false };
     private string accessToken;
+    private string refreshToken;
+    private string authorizedClient;
     private DateTime expires;
 
-    internal SpotifyQueueControl()
+    internal SpotifyQueueControl(string directory, Action<bool> saved)
     {
+        var path = Path.Combine(directory, "spotify-session.txt");
+        var stored = SavedCredential.Read(path);
+        if (stored != null)
+        {
+            var parts = stored.Split(new[] { '\n' }, 2);
+            if (parts.Length == 2 && Regex.IsMatch(parts[0], @"\A[0-9a-fA-F]{32}\z") && parts[1].Length > 0)
+            {
+                authorizedClient = clientId.Text = parts[0];
+                refreshToken = parts[1];
+                add.Enabled = true;
+                status.Text = "Spotify-Verbindung gespeichert. Sie wird beim Einreihen erneuert.";
+            }
+        }
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(8) };
         layout.Controls.AddRange(new Control[] { status, new Label { Text = "Spotify Client-ID", AutoSize = true }, clientId, connect,
             new Label { Text = "Spotify-Titellink oder URI", AutoSize = true }, track, add });
         Controls.Add(layout);
-        connect.Click += async delegate { await Connect(); };
-        add.Click += async delegate { await Enqueue(); };
+        connect.Click += async delegate { await Connect(path, saved); };
+        add.Click += async delegate { await Enqueue(path, saved); };
     }
 
-    private async Task Connect()
+    private async Task Connect(string path, Action<bool> saved)
     {
         var id = clientId.Text.Trim();
         if (!Regex.IsMatch(id, @"\A[0-9a-fA-F]{32}\z"))
@@ -76,24 +92,47 @@ internal sealed class SpotifyQueueControl : UserControl
                     var token = new JavaScriptSerializer().Deserialize<Token>(await response.Content.ReadAsStringAsync());
                     accessToken = token.access_token;
                     expires = DateTime.UtcNow.AddSeconds(token.expires_in - 10);
+                    authorizedClient = id;
+                    refreshToken = token.refresh_token;
+                    if (!string.IsNullOrEmpty(refreshToken)) SavedCredential.Write(path, id + "\n" + refreshToken, saved);
                 }
                 status.Text = "Spotify verbunden. Du kannst einen Titel einreihen.";
                 add.Enabled = true;
             }
         }
         catch (Exception error) { Report("Spotify-Anmeldung fehlgeschlagen. Prüfe Client-ID und Redirect-URI.", error); }
-        finally { if (!IsDisposed) connect.Enabled = true; }
+        finally { if (!IsDisposed) { connect.Enabled = true; add.Enabled = accessToken != null || refreshToken != null; } }
     }
 
-    private async Task Enqueue()
+    private async Task Enqueue(string path, Action<bool> saved)
     {
         var uri = TrackUri(track.Text);
         if (uri == null) { status.Text = "Gib einen Spotify-Link zu einem Titel oder eine spotify:track-URI ein."; return; }
-        if (string.IsNullOrEmpty(accessToken) || DateTime.UtcNow >= expires)
-        { status.Text = "Bitte Spotify erneut verbinden."; add.Enabled = false; return; }
         add.Enabled = connect.Enabled = false;
         try
         {
+            if (accessToken == null || DateTime.UtcNow >= expires)
+            {
+                if (refreshToken == null) { status.Text = "Bitte Spotify erneut verbinden."; return; }
+                var fields = new System.Collections.Generic.Dictionary<string, string> {
+                    { "grant_type", "refresh_token" }, { "client_id", authorizedClient }, { "refresh_token", refreshToken }
+                };
+                using (var content = new FormUrlEncodedContent(fields))
+                using (var response = await Client.PostAsync("https://accounts.spotify.com/api/token", content))
+                {
+                    if ((int)response.StatusCode == 400 || (int)response.StatusCode == 401)
+                    { status.Text = "Spotify verlangt eine erneute Kontofreigabe."; return; }
+                    response.EnsureSuccessStatusCode();
+                    var token = new JavaScriptSerializer().Deserialize<Token>(await response.Content.ReadAsStringAsync());
+                    accessToken = token.access_token;
+                    expires = DateTime.UtcNow.AddSeconds(token.expires_in - 10);
+                    if (!string.IsNullOrEmpty(token.refresh_token) && token.refresh_token != refreshToken)
+                    {
+                        refreshToken = token.refresh_token;
+                        SavedCredential.Write(path, authorizedClient + "\n" + refreshToken, saved);
+                    }
+                }
+            }
             using (var request = new HttpRequestMessage(HttpMethod.Post, "https://api.spotify.com/v1/me/player/queue?uri=" + Uri.EscapeDataString(uri)))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -108,7 +147,9 @@ internal sealed class SpotifyQueueControl : UserControl
         }
         catch (HttpRequestException error) { Report("Spotify-Warteschlange nicht erreichbar.", error); }
         catch (OperationCanceledException error) { Report("Spotify hat nicht rechtzeitig geantwortet.", error); }
-        finally { if (!IsDisposed) { connect.Enabled = true; add.Enabled = accessToken != null; } }
+        catch (ArgumentException error) { Report("Spotify hat ungültige Kontodaten geliefert.", error); }
+        catch (InvalidOperationException error) { Report("Spotify hat ungültige Kontodaten geliefert.", error); }
+        finally { if (!IsDisposed) { connect.Enabled = true; add.Enabled = accessToken != null || refreshToken != null; } }
     }
 
     internal static string TrackUri(string input)
@@ -143,6 +184,7 @@ internal sealed class SpotifyQueueControl : UserControl
     private sealed class Token
     {
         public string access_token { get; set; }
+        public string refresh_token { get; set; }
         public int expires_in { get; set; }
     }
 }

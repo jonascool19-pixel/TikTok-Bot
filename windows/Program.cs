@@ -89,8 +89,8 @@ internal sealed class BotWindow : Form
             }
             if (browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(target);
         };
-        var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
-        var replies = new ChatReplies(() => music.RequestsEnabled) { Dock = DockStyle.Fill };
+        var music = new MusicQueue(() => comments.ChatAvailable, data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
+        var replies = new ChatReplies(() => music.RequestsEnabled, data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
         BindSetting("mute-live", muteLive);
         music.BindSettings(BindSetting);
         replies.BindSettings(BindSetting);
@@ -172,17 +172,13 @@ internal sealed class BotWindow : Form
         var settingsContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14) };
         settingsTab.Padding = new Padding(12);
         settingsTab.Controls.AddRange(new Control[] { settingsContent, menu });
-        TabPage[] settingsPages = null;
+        var settingsPanels = new System.Collections.Generic.Dictionary<string, Panel>(StringComparer.Ordinal);
         Action<TabPage> openSetting = page =>
         {
             tabs.SelectedTab = settingsTab;
-            menu.SelectedIndex = Array.IndexOf(settingsPages, page);
+            menu.SelectedItem = page.Text;
         };
-        var youtubeTab = new TabPage("YouTube");
-        var openYouTube = new Button { Text = "YouTube öffnen / anmelden", AutoSize = true, Location = new Point(12, 12) };
-        openYouTube.Click += delegate { MusicQueue.OpenYouTube("https://www.youtube.com/"); };
-        youtubeTab.Controls.Add(openYouTube);
-        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, youtubeTab, statsTab, settingsTab });
+        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, statsTab, settingsTab });
         tabs.SelectedTab = chatTab;
         Controls.AddRange(new Control[] { tabs, settingsFeedback, status, account, header });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
@@ -211,7 +207,7 @@ internal sealed class BotWindow : Form
             if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
         };
         liveOptions.Controls.AddRange(new Control[] { liveStatus, monitor, nickname, muteLive });
-        ConfigureLiveMonitor(() => tabs.SelectedTab == settingsTab && menu.SelectedIndex == 2);
+        ConfigureLiveMonitor(() => tabs.SelectedTab == settingsTab && Equals(menu.SelectedItem, liveTab.Text));
         var accountTab = new TabPage("Bot-Konto");
         var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
         var signIn = new Button { Text = "Bei TikTok anmelden", AutoSize = true };
@@ -264,19 +260,19 @@ internal sealed class BotWindow : Form
             Shown += async delegate { updateTimer.Start(); await updater.Check(); };
         Disposed += delegate { updateTimer.Dispose(); notices.Dispose(); };
         intervalsTab.Controls.Add(intervals);
-        settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab };
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
             var panel = new Panel { Dock = DockStyle.Fill, Visible = false };
             while (page.Controls.Count > 0) panel.Controls.Add(page.Controls[0]);
             settingsContent.Controls.Add(panel);
-            page.Dispose();
+            settingsPanels.Add(page.Text, panel);
         }
         menu.SelectedIndexChanged += delegate
         {
-            for (var index = 0; index < settingsPages.Length; index++)
-                settingsContent.Controls[index].Visible = index == menu.SelectedIndex;
+            foreach (var entry in settingsPanels)
+                entry.Value.Visible = Equals(entry.Key, menu.SelectedItem);
         };
         menu.SelectedIndex = 0;
         Controls.Add(liveOptions);
