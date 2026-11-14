@@ -67,14 +67,38 @@ internal sealed class LiveComments : UserControl
     return comments;
 })()";
 
+    private readonly CheckBox readGifts = new CheckBox { Text = "Geschenke ansagen und danken", AutoSize = true };
+    private const string ReadGifts = @"
+(() => {
+    const root = document.querySelector('[data-e2e=""live-chat-container""], [data-e2e=""chat-room""]');
+    if (!root) return [];
+    const previous = window.__ttbGiftRows;
+    const seen = previous && previous.root === root ? previous.seen : new WeakSet();
+    window.__ttbGiftRows = {root, seen};
+    const gifts = [];
+    for (const row of Array.from(root.querySelectorAll('[data-e2e=""gift-message""], [data-e2e=""live-gift-message""]')).slice(-100)) {
+        const sender = row.querySelector('[data-e2e=""gift-sender-name""], [data-e2e=""message-owner-name""]');
+        const gift = row.querySelector('[data-e2e=""gift-name""]');
+        if (!sender || !gift) continue;
+        const name = sender.textContent.trim().slice(0,80);
+        const title = gift.textContent.trim().slice(0,80);
+        if (!name || !title) continue;
+        if (previous && previous.root === root && !seen.has(row)) gifts.push({Name: name, Title: title});
+        seen.add(row);
+    }
+    return gifts;
+})()";
+
     internal LiveComments()
     {
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         var test = new Button { Text = "Stimme testen", AutoSize = true };
+        var testGift = new Button { Text = "Geschenkansage testen", AutoSize = true };
+        testGift.Click += delegate { Speak(GiftAnnouncement("Alex", "Rose")); };
         style.Items.AddRange(new object[] { "Original", "Cartoon · hoch", "Cartoon · tief" });
         style.SelectedIndex = 0;
         toolbar.Controls.AddRange(new Control[] { read, voice, style, new Label { Text = "Lautstärke %", AutoSize = true }, volume,
-            new Label { Text = "Tempo %", AutoSize = true }, speed, test, saveVoice });
+            new Label { Text = "Tempo %", AutoSize = true }, speed, test, saveVoice, readGifts, testGift });
         Controls.AddRange(new Control[] { history, status, savedVoice, toolbar });
         timer.Tick += Poll;
         read.CheckedChanged += delegate { if (!read.Checked) StopSpeech(); };
@@ -124,6 +148,7 @@ internal sealed class LiveComments : UserControl
         public decimal Volume { get; set; }
         public decimal Speed { get; set; }
         public bool ReadComments { get; set; }
+        public bool ReadGifts { get; set; }
     }
 
     internal void LoadVoicePreferences(string directory)
@@ -141,6 +166,7 @@ internal sealed class LiveComments : UserControl
                     if (saved.Volume >= volume.Minimum && saved.Volume <= volume.Maximum) volume.Value = saved.Volume;
                     if (saved.Speed >= speed.Minimum && saved.Speed <= speed.Maximum) speed.Value = saved.Speed;
                     read.Checked = saved.ReadComments;
+                    readGifts.Checked = saved.ReadGifts;
                     savedVoice.Text = "Stimmeinstellungen geladen.";
                 }
             }
@@ -155,7 +181,7 @@ internal sealed class LiveComments : UserControl
             var preferences = new VoicePreferences
             {
                 Voice = voice.SelectedItem as string, Effect = style.SelectedItem as string,
-                Volume = volume.Value, Speed = speed.Value, ReadComments = read.Checked
+                Volume = volume.Value, Speed = speed.Value, ReadComments = read.Checked, ReadGifts = readGifts.Checked
             };
             try
             {
@@ -175,6 +201,7 @@ internal sealed class LiveComments : UserControl
         volume.ValueChanged += save;
         speed.ValueChanged += save;
         read.CheckedChanged += save;
+        readGifts.CheckedChanged += save;
         saveVoice.Click += save;
     }
 
@@ -196,10 +223,11 @@ internal sealed class LiveComments : UserControl
             first.volume.Value = 42;
             first.speed.Value = 130;
             first.read.Checked = true;
+            first.readGifts.Checked = true;
             first.saveVoice.PerformClick();
             second.LoadVoicePreferences(directory);
             return Equals(first.voice.SelectedItem, second.voice.SelectedItem) &&
-                second.style.SelectedIndex == 2 && second.volume.Value == 42 && second.speed.Value == 130 && second.read.Checked;
+                second.style.SelectedIndex == 2 && second.volume.Value == 42 && second.speed.Value == 130 && second.read.Checked && second.readGifts.Checked;
         }
     }
 
@@ -212,9 +240,15 @@ internal sealed class LiveComments : UserControl
             "document.querySelector('[data-e2e=chat-room]').appendChild(row);");
         var added = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         var repeated = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
+        await core.ExecuteScriptAsync(ReadGifts);
+        await core.ExecuteScriptAsync("document.querySelector('[data-e2e=chat-room]').insertAdjacentHTML('beforeend', " +
+            "\"<div data-e2e='gift-message'><b data-e2e='gift-sender-name'>Alex</b><span data-e2e='gift-name'>Rose</span></div>\");");
+        var gifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
+        var repeatedGifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
         return initial != null && initial.Count == 0 && added != null && added.Count == 1 &&
             added[0].Name == "Zuschauer" && added[0].Text == "Wie heißt das Spiel?" &&
-            repeated != null && repeated.Count == 0;
+            repeated != null && repeated.Count == 0 && gifts.Count == 1 && repeatedGifts.Count == 0 &&
+            GiftAnnouncement(gifts[0].Name, gifts[0].Title) == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
     }
 
     private async void Poll(object sender, EventArgs args)
@@ -252,6 +286,7 @@ internal sealed class LiveComments : UserControl
                 return;
             }
             var result = await browser.ExecuteScriptAsync(ReadComments);
+            var giftResult = await browser.ExecuteScriptAsync(ReadGifts);
             var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
             if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
             var audience = json.Deserialize<string>(audienceResult);
@@ -260,6 +295,9 @@ internal sealed class LiveComments : UserControl
             SetConnection(comments != null);
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
+            if (readGifts.Checked)
+                foreach (var gift in json.Deserialize<List<Gift>>(giftResult))
+                    Speak(GiftAnnouncement(gift.Name, gift.Title));
             foreach (var comment in comments)
             {
                 var line = comment.Name + ": " + comment.Text;
@@ -288,6 +326,17 @@ internal sealed class LiveComments : UserControl
     internal static bool IsPlaybackAdvancing(double? previous, double? current)
     {
         return previous.HasValue && current.HasValue && current.Value > previous.Value;
+    }
+
+    internal static string GiftAnnouncement(string name, string title)
+    {
+        return name + " hat ein Geschenk geschickt: " + title + ". " + ChatReplies.GiftThanks(name, title, 1);
+    }
+
+    private sealed class Gift
+    {
+        public string Name { get; set; }
+        public string Title { get; set; }
     }
 
     private void Speak(string text)
