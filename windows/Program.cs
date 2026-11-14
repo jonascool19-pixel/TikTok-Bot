@@ -548,6 +548,10 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("okay", "") == null &&
             ChatReplies.CleanAiReply(" KEINE_ANTWORT. ") == null &&
             ChatReplies.CleanAiReply(" Klar, gerne! ") == "Klar, gerne!" &&
+            ChatReplies.CleanAiReply("Antwort: Wir spielen ETS2.") == "Wir spielen ETS2." &&
+            ChatReplies.CleanAiReply("Vorher: Kommentar (Spiel: ETS2)") == null &&
+            ChatReplies.CleanAiReply("{\"kommentar\":\"Welches Spiel?\"}") == null &&
+            ChatReplies.CleanAiReply("Welches Spiel?", "Welches Spiel?") == null &&
             IsAllowedRoom("https://www.tiktok.com/@Creator/live?share=1", LiveAddress("@creator")) &&
             !IsAllowedRoom("https://www.tiktok.com/@other/live", LiveAddress("@creator")) &&
             !IsAllowedRoom("https://www.tiktok.com/@creator/live", null) &&
