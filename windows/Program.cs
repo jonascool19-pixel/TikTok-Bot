@@ -96,6 +96,8 @@ internal sealed class BotWindow : Form
         BindSetting("mute-live", muteLive);
         music.BindSettings(BindSetting);
         replies.BindSettings(BindSetting);
+        replies.SendLiveReply = SendLiveReply;
+        music.SendChoice = message => replies.AutoSendEnabled ? SendLiveReply(message, true) : System.Threading.Tasks.Task.FromResult<string>(null);
         comments.VoiceSettingsSaved += ShowSettingsFeedback;
         var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
         profile.Click += delegate
@@ -349,7 +351,7 @@ internal sealed class BotWindow : Form
         designOptions.Controls.AddRange(new Control[] { designTitle, designPicker, previews });
         designsTab.Controls.Add(designOptions);
         var helpTab = new TabPage("Anleitung");
-        helpTab.Controls.Add(new MusicHelp { Dock = DockStyle.Fill });
+        helpTab.Controls.Add(new BotHelp { Dock = DockStyle.Fill });
         var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, helpTab };
         foreach (var page in settingsPages)
         {
@@ -661,6 +663,67 @@ internal sealed class BotWindow : Form
     private async void CheckAccount(object sender, EventArgs args)
     {
         await RefreshAccount();
+    }
+
+    private bool sendingReply;
+    private DateTime nextReplyTime;
+
+    private System.Threading.Tasks.Task<string> SendLiveReply(string reply) { return SendLiveReply(reply, false); }
+
+    private async System.Threading.Tasks.Task<string> SendLiveReply(string reply, bool musicChoice)
+    {
+        const string fallback = "Antwortvorschlag bereit. ";
+        var core = browser.CoreWebView2;
+        var target = watchedRoom;
+        if (core == null || !comments.ChatAvailable || !IsAllowedRoom(core.Source, target))
+            return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
+        if (sendingReply || (!musicChoice && DateTime.UtcNow < nextReplyTime))
+            return fallback + "Sendepause aktiv.";
+        sendingReply = true;
+        try
+        {
+            var cookies = await core.CookieManager.GetCookiesAsync("https://www.tiktok.com/");
+            if (IsDisposed || !comments.ChatAvailable || target != watchedRoom || !IsAllowedRoom(core.Source, target))
+                return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
+            var signedIn = false;
+            foreach (var cookie in cookies)
+                if ((cookie.Name == "sessionid" || cookie.Name == "sessionid_ss") && !string.IsNullOrEmpty(cookie.Value) &&
+                    (cookie.IsSession || cookie.Expires.ToUniversalTime() > DateTime.UtcNow)) signedIn = true;
+            if (!signedIn) return fallback + "Melde zuerst das Bot-Konto bei TikTok an.";
+            if (configuredHandle != null && botHandle != null && !string.Equals(configuredHandle, botHandle, StringComparison.OrdinalIgnoreCase))
+                return fallback + "Das angemeldete Konto weicht vom gespeicherten Bot-Konto ab.";
+
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+            var result = await core.ExecuteScriptAsync(@"(() => {
+                if ((location.origin + location.pathname.replace(/\/$/, '')).toLowerCase() !== " + json.Serialize(target.ToLowerInvariant()) + @") return 'room';
+                const room = document.querySelector('[data-e2e=chat-room]');
+                if (!room) return 'missing';
+                const scope = room.parentElement || room;
+                const editor = scope.querySelector('[contenteditable][role=textbox], [contenteditable][data-e2e=chat-input], [data-e2e=chat-input] [contenteditable], [contenteditable=plaintext-only][maxlength=""150""]');
+                const send = scope.querySelector('button[data-e2e=chat-send], button[data-e2e=chat-send-button], button[data-e2e=chat-send-btn], button[aria-label=""Send message""], button[aria-label=""Senden""], button[aria-label=""Send""]');
+                if (!editor || !send || !editor.getClientRects().length || !send.getClientRects().length) return 'missing';
+                if (editor.textContent.trim()) return 'draft';
+                editor.focus();
+                const reply = " + json.Serialize(reply) + @";
+                if (!document.execCommand('insertText', false, reply) || editor.textContent.trim() !== reply) return 'draft';
+                if (send.disabled || send.getAttribute('aria-disabled') === 'true') return 'draft';
+                send.click();
+                return 'submitted';
+            })()");
+            if (result == "\"submitted\"")
+            {
+                nextReplyTime = DateTime.UtcNow.AddSeconds(12);
+                return "Antwort an TikTok übergeben. Die Veröffentlichung siehst du im LIVE-Chat.";
+            }
+            if (result == "\"draft\"") return fallback + "Prüfe das TikTok-Chatfeld und sende bei Bedarf manuell.";
+            return fallback + "TikTok-Sendefeld nicht verfügbar. Öffne die TikTok-Webansicht und prüfe den Chat.";
+        }
+        catch (InvalidOperationException error)
+        {
+            if (!IsDisposed) ErrorLog.Write("Chatantworten", "TikTok-Sendeversuch fehlgeschlagen.", error);
+            return fallback + "TikTok-Sendeversuch fehlgeschlagen.";
+        }
+        finally { sendingReply = false; }
     }
 
     private async System.Threading.Tasks.Task<bool> RefreshAccount()

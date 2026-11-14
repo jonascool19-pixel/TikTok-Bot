@@ -35,6 +35,9 @@ internal sealed class ChatReplies : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 30, Text = "Vorschläge erscheinen hier. Du sendest sie im TikTok-Chat." };
     private readonly Button copy = new Button { Text = "Antwort kopieren", AutoSize = true };
     private readonly CheckBox useAi = new CheckBox { Text = "Lokale KI", AutoSize = true };
+    private readonly CheckBox autoSend = new CheckBox { Text = "Antworten automatisch in TikTok senden", AutoSize = true };
+    internal Func<string, Task<string>> SendLiveReply;
+    internal bool AutoSendEnabled { get { return autoSend.Checked; } }
     private readonly CheckBox learn = new CheckBox { Text = "Lernvorschläge aus dem LIVE sammeln", AutoSize = true };
     private readonly ComboBox candidates = new ThemeComboBox { Width = 240, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Lernvorschlag auswählen" };
     private readonly Dictionary<string, string> suggested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -62,7 +65,7 @@ internal sealed class ChatReplies : UserControl
         var gift = new Button { Text = "Geschenk-Dank testen", AutoSize = true };
         gift.Click += delegate { Add(GiftThanks("Alex", "Rose", 2)); };
         tools.Controls.AddRange(new Control[] { enabled, new Label { Text = "Spiel (optional)", AutoSize = true }, game,
-            example, new Label { Text = "Testkommentar", AutoSize = true }, sample, test, copy, gift, useAi });
+            example, new Label { Text = "Testkommentar", AutoSize = true }, sample, test, copy, gift, useAi, autoSend });
         useAi.CheckedChanged += delegate
         {
             ResetLiveContext();
@@ -208,6 +211,7 @@ internal sealed class ChatReplies : UserControl
     internal void BindSettings(Action<string, CheckBox> bind)
     {
         bind("chat-replies-enabled", enabled);
+        bind("chat-auto-send", autoSend);
         bind("chat-local-ai", useAi);
         bind("chat-learning-enabled", learn);
     }
@@ -230,7 +234,7 @@ internal sealed class ChatReplies : UserControl
         string result;
         if (!custom.TryGetValue(NormalizeQuestion(text), out result))
             result = Suggest(text, game.Text, requestsEnabled) ?? FindSavedAnswer(text, custom);
-        if (result != null) { Add(result); return; }
+        if (result != null) { await ShowReply(result, test); return; }
         if (!useAi.Checked)
         {
             if (test) status.Text = "Für diesen Kommentar gibt es keine feste Antwort.";
@@ -263,7 +267,8 @@ internal sealed class ChatReplies : UserControl
             if (IsDisposed || session != liveSession || (!test && !enabled.Checked)) return;
             if (output != null)
             {
-                Add(output);
+                await ShowReply(output, test);
+                if (IsDisposed || session != liveSession) return;
                 if (!test && learn.Checked && LearningCandidate != null) LearningCandidate(text, output);
             }
             else if (test) status.Text = "Die lokale KI schlägt keine Antwort vor.";
@@ -370,6 +375,16 @@ internal sealed class ChatReplies : UserControl
             string.Equals(result.TrimEnd('.', '!', '?').TrimEnd(), (original ?? "").Trim().TrimEnd('.', '!', '?').TrimEnd(), StringComparison.OrdinalIgnoreCase) ||
             Regex.IsMatch(result, @"https?://|www\.|<\|[^>]*\|>|[{}]|(?:\b(?:vorher|kommentar|spiel|benutzer|system|user|prompt)\s*[""']?\s*[:=(])|\A`", RegexOptions.IgnoreCase)) return null;
         return result.Length <= 150 ? result : result.Substring(0, char.IsHighSurrogate(result[149]) ? 149 : 150).TrimEnd();
+    }
+
+    private async Task ShowReply(string reply, bool test)
+    {
+        Add(reply);
+        if (!test && autoSend.Checked && SendLiveReply != null)
+        {
+            var result = await SendLiveReply(reply);
+            if (!IsDisposed) status.Text = result;
+        }
     }
 
     private void Add(string reply)

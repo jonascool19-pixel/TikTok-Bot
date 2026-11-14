@@ -139,7 +139,7 @@ internal sealed class SpotifyQueueControl : UserControl
         try
         {
             if (!await EnsureToken()) return null;
-            using (var request = new HttpRequestMessage(HttpMethod.Get, "https://api.spotify.com/v1/search?type=track&limit=10&q=" + Uri.EscapeDataString(query)))
+            using (var request = new HttpRequestMessage(HttpMethod.Get, "https://api.spotify.com/v1/search?type=track&limit=10&q=" + Uri.EscapeDataString(System.Text.RegularExpressions.Regex.Replace(query.Trim(), @"\s+[-–—]\s+", " "))))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 using (var response = await Client.SendAsync(request))

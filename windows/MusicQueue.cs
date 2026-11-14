@@ -20,7 +20,7 @@ internal sealed class MusicQueue : UserControl
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
     private readonly ComboBox wishSource = new ThemeComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Quelle für LIVE-Musikwünsche" };
     private readonly YouTubeMusicControl pear;
-    private readonly Microsoft.Web.WebView2.WinForms.WebView2 youtubeBrowser = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+    private readonly YouTubeQueue youtube;
     private readonly SpotifyQueueControl spotifyQueueControl;
     private readonly Queue<KeyValuePair<string, string>> spotifyPending = new Queue<KeyValuePair<string, string>>();
     private int spotifySession;
@@ -34,13 +34,13 @@ internal sealed class MusicQueue : UserControl
     private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
     internal bool RequestsEnabled { get { return collect.Checked; } }
     internal event Action<string> WishAdded;
+    internal Func<string, Task<string>> SendChoice;
 
     internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved)
     {
         this.chatAvailable = chatAvailable;
         pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Bottom, Height = 155 };
-        youtubeBrowser.CreationProperties = new Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
-            { UserDataFolder = Path.Combine(directory, "YouTubeProfile") };
+        youtube = new YouTubeQueue(directory) { Dock = DockStyle.Fill };
         wishSource.Items.AddRange(new object[] { "Lokale Dateien", "Spotify", "YouTube Music", "YouTube" });
         var sourcePath = Path.Combine(directory, "music-wish-source.txt");
         wishSource.SelectedIndex = 0;
@@ -173,18 +173,9 @@ internal sealed class MusicQueue : UserControl
             if (uri != null) await spotifyQueueControl.Enqueue(uri);
             else await spotifyQueueControl.ShowSearch(title);
         });
-        var youtube = new TabPage("YouTube");
-        var youtubeTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
-        var youtubeQuery = new TextBox { Width = 240, MaxLength = 150, AccessibleName = "YouTube-Suche" };
-        youtubeTools.Controls.Add(youtubeQuery);
-        AddButton(youtubeTools, "Suchen", () => ShowYouTube(youtubeQuery.Text));
-        AddButton(youtubeTools, "YouTube im Browser öffnen", () => OpenYouTube("https://www.youtube.com/"));
-        youtube.Controls.AddRange(new Control[] { youtubeBrowser, youtubeTools });
-        youtubeBrowser.VisibleChanged += delegate
-        {
-            if (youtubeBrowser.Visible && youtubeBrowser.Source == null) ShowYouTube("");
-        };
-        sources.AddPages(local, remote, spotifyQueue, youtubeMusic, youtube);
+        var youtubeTab = new TabPage("YouTube");
+        youtubeTab.Controls.Add(youtube);
+        sources.AddPages(local, remote, spotifyQueue, youtubeMusic, youtubeTab);
         var wishOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         wishOptions.Controls.AddRange(new Control[] { collect, new Label { Text = "Musikquelle", AutoSize = true }, wishSource, autoPlay });
         Controls.AddRange(new Control[] { sources, prompt, wishOptions });
@@ -222,20 +213,17 @@ internal sealed class MusicQueue : UserControl
         if (!match.Success) return false;
         var title = match.Groups[1].Value.Trim();
         if (title.Length < 2) return true;
-        var added = AddWish(title, false);
+        if (AddWish(title, false) == false && requests.Items.Count >= 100) return true;
         var source = wishSource.SelectedItem as string;
         if (source == "YouTube" || source == "YouTube Music")
         {
-            if (added) HandleYouTubeWish(title, source == "YouTube Music");
+            HandleYouTubeWish(title, source == "YouTube Music");
             return true;
         }
         if (source == "Spotify")
         {
-            if (added)
-            {
-                if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
-                QueueSpotify(handle, title);
-            }
+            if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
+            QueueSpotify(handle, title);
             return true;
         }
         var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
@@ -272,18 +260,7 @@ internal sealed class MusicQueue : UserControl
                 prompt.Text = queued ? "Titel in YouTube Music eingereiht." : "YouTube-Music-Wunsch gespeichert. Prüfe die Pear-Desktop-Verbindung.";
             return;
         }
-        ShowYouTube(id == null ? title : "https://www.youtube.com/watch?v=" + id);
-        prompt.Text = "YouTube-Wunsch in der Webansicht geöffnet.";
-    }
-
-    private void ShowYouTube(string query)
-    {
-        var id = query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeMusicControl.VideoId(query) : null;
-        var address = id != null ? "https://www.youtube.com/watch?v=" + id :
-            string.IsNullOrWhiteSpace(query) ? "https://www.youtube.com/" :
-            "https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query.Trim());
-        try { youtubeBrowser.Source = new Uri(address); }
-        catch (InvalidOperationException error) { ErrorLog.Write("YouTube", "YouTube-Ansicht konnte nicht geöffnet werden.", error); }
+        prompt.Text = youtube.AddLiveWish(title, id);
     }
 
     internal void ResetChoices()
@@ -328,6 +305,13 @@ internal sealed class MusicQueue : UserControl
                             var label = (index + 1) + ") " + item;
                             return label.Length <= max ? label : label.Substring(0, max - 1) + "…";
                         }));
+                        if (SendChoice != null)
+                        {
+                            var question = prompt.Text;
+                            var delivery = await SendChoice(question);
+                            if (!IsDisposed && session == spotifySession && prompt.Text == question && delivery != null)
+                                spotifyStatus.Text = delivery;
+                        }
                         continue;
                     }
                     uri = tracks[0].Uri;
