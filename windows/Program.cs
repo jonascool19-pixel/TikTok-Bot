@@ -8,7 +8,7 @@ using Microsoft.Web.WebView2.WinForms;
 internal static class Program
 {
     [STAThread]
-    private static int Main(string[] args)
+    private static int Main(string[] arguments)
     {
         Application.ThreadException += (sender, args) =>
         {
@@ -21,7 +21,7 @@ internal static class Program
             ErrorLog.Write("Windows-App", "Eine Hintergrundaufgabe ist fehlgeschlagen.", args.Exception.GetBaseException());
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        using (var window = new BotWindow(args.Length == 1 && args[0] == "--smoke-test"))
+        using (var window = new BotWindow(arguments.Length == 1 && arguments[0] == "--smoke-test"))
         {
             Application.Run(window);
             return window.ExitCode;
