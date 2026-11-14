@@ -38,6 +38,7 @@ internal sealed class BotWindow : Form
     private string configuredHandle;
     private bool missingAccountLogged;
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
+    private readonly Label settingsFeedback = new Label { Dock = DockStyle.Bottom, Height = 25, Visible = false };
     private readonly bool smokeTest;
     private readonly Label accountState = new Label { AutoSize = true, Text = "Bot-Konto: Anmeldung wird geprüft" };
     private readonly string data;
@@ -90,6 +91,10 @@ internal sealed class BotWindow : Form
         };
         var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
         var replies = new ChatReplies(() => music.RequestsEnabled) { Dock = DockStyle.Fill };
+        BindSetting("mute-live", muteLive);
+        music.BindSettings(BindSetting);
+        replies.BindSettings(BindSetting);
+        comments.VoiceSettingsSaved += ShowSettingsFeedback;
         var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
         profile.Click += delegate
         {
@@ -179,7 +184,7 @@ internal sealed class BotWindow : Form
         youtubeTab.Controls.Add(openYouTube);
         tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, youtubeTab, statsTab, settingsTab });
         tabs.SelectedTab = chatTab;
-        Controls.AddRange(new Control[] { tabs, status, account, header });
+        Controls.AddRange(new Control[] { tabs, settingsFeedback, status, account, header });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var liveStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 12, 0) };
         Action<bool> updateLiveStatus = connected =>
@@ -237,12 +242,13 @@ internal sealed class BotWindow : Form
             {
                 Directory.CreateDirectory(data);
                 File.WriteAllText(accountPath, name);
+                ShowSettingsFeedback(true);
                 configuredHandle = name;
                 missingAccountLogged = false;
                 accountHelp.Text = "Gespeichert: " + name + ". Die Anmeldung erfolgt bei TikTok.";
             }
-            catch (IOException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
-            catch (UnauthorizedAccessException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (IOException error) { ShowSettingsFeedback(false); Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (UnauthorizedAccessException error) { ShowSettingsFeedback(false); Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
         };
         var diagnostics = new Button { Text = "Fehlerprotokoll anzeigen", AutoSize = true };
         diagnostics.Click += delegate { openSetting(errorTab); };
@@ -315,9 +321,7 @@ internal sealed class BotWindow : Form
         field.ValueChanged += delegate
         {
             timer.Interval = (int)field.Value * 60000;
-            try { Directory.CreateDirectory(data); File.WriteAllText(path, ((int)field.Value).ToString()); }
-            catch (IOException error) { Report("Prüfintervall konnte nicht gespeichert werden.", error.GetType().Name); }
-            catch (UnauthorizedAccessException error) { Report("Prüfintervall konnte nicht gespeichert werden.", error.GetType().Name); }
+            SavePreference(path, ((int)field.Value).ToString());
         };
         panel.Controls.Add(new Label { Text = label, AutoSize = true });
         panel.Controls.Add(field);
@@ -353,9 +357,10 @@ internal sealed class BotWindow : Form
                 var preference = Path.Combine(data, "live-monitor-disabled");
                 if (monitor.Checked) File.Delete(preference);
                 else File.WriteAllText(preference, "");
+                ShowSettingsFeedback(true);
             }
-            catch (IOException error) { Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
-            catch (UnauthorizedAccessException error) { Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (IOException error) { ShowSettingsFeedback(false); Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (UnauthorizedAccessException error) { ShowSettingsFeedback(false); Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
             if (monitor.Checked && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(watchedRoom);
         };
         liveTimer.Tick += async delegate
@@ -384,17 +389,45 @@ internal sealed class BotWindow : Form
 
     private bool SaveMonitor(string target)
     {
+        if (!SavePreference(Path.Combine(data, "watched-live.txt"), target)) return false;
+        watchedRoom = target;
+        comments.SetConnection(false);
+        return true;
+    }
+
+    private void BindSetting(string name, CheckBox field)
+    {
+        var path = Path.Combine(data, name + ".txt");
+        try
+        {
+            bool saved;
+            if (File.Exists(path) && bool.TryParse(File.ReadAllText(path), out saved)) field.Checked = saved;
+        }
+        catch (IOException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gelesen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gelesen werden.", error); }
+        field.CheckedChanged += delegate { SavePreference(path, field.Checked.ToString()); };
+    }
+
+    private bool SavePreference(string path, string value)
+    {
         try
         {
             Directory.CreateDirectory(data);
-            File.WriteAllText(Path.Combine(data, "watched-live.txt"), target);
-            watchedRoom = target;
-            comments.SetConnection(false);
+            File.WriteAllText(path, value);
+            ShowSettingsFeedback(true);
             return true;
         }
-        catch (IOException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
-        catch (UnauthorizedAccessException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
+        catch (IOException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gespeichert werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gespeichert werden.", error); }
+        ShowSettingsFeedback(false);
         return false;
+    }
+
+    private void ShowSettingsFeedback(bool saved)
+    {
+        settingsFeedback.Text = saved ? "Einstellung gespeichert" : "Einstellung konnte nicht gespeichert werden";
+        settingsFeedback.ForeColor = SystemInformation.HighContrast ? SystemColors.ControlText : saved ? Color.DarkGreen : Color.Firebrick;
+        settingsFeedback.Visible = true;
     }
 
     private static string LiveAddress(string input)

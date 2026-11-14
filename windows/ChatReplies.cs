@@ -80,6 +80,12 @@ internal sealed class ChatReplies : UserControl
         };
     }
 
+    internal void BindSettings(Action<string, CheckBox> bind)
+    {
+        bind("chat-replies-enabled", enabled);
+        bind("chat-local-ai", useAi);
+    }
+
     internal async void ConsiderLiveComment(string text, bool requestsEnabled)
     {
         if (!enabled.Checked) return;

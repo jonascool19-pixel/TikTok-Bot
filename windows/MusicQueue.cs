@@ -77,11 +77,7 @@ internal sealed class MusicQueue : UserControl
         };
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
         AddButton(searchTools, "Wunsch entfernen", delegate
-        {
-            if (requests.SelectedIndex < 0) return;
-            youtubeRequests.Items.Remove(requests.SelectedItem);
-            requests.Items.RemoveAt(requests.SelectedIndex);
-        });
+            RemoveWish(requests.SelectedItem as string));
         searchTools.Controls.Add(collect);
         searchTools.Controls.Add(autoPlay);
         AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
@@ -93,13 +89,33 @@ internal sealed class MusicQueue : UserControl
         remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus, prompt });
         var youtubeMusic = new TabPage("YouTube Music und Musikwünsche");
         var ytTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        var ytQuery = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "YouTube Music: Titel oder Interpret" };
+        var ytStatus = new Label { Dock = DockStyle.Bottom, Height = 30 };
+        ytTools.Controls.Add(ytQuery);
         AddButton(ytTools, "YouTube Music öffnen / anmelden", () => OpenYouTube("https://music.youtube.com/"));
-        AddButton(ytTools, "Wunsch suchen", () =>
+        AddButton(ytTools, "Suchen", () => SearchYouTubeMusic(ytQuery.Text));
+        AddButton(ytTools, "Wunsch hinzufügen", delegate
         {
-            var title = youtubeRequests.SelectedItem as string;
-            if (title != null) OpenYouTube("https://music.youtube.com/search?q=" + Uri.EscapeDataString(title));
+            if (AddWish(ytQuery.Text, feedback: ytStatus))
+            {
+                youtubeRequests.SelectedItem = ytQuery.Text.Trim();
+                ytQuery.Clear();
+                ytQuery.Focus();
+            }
         });
-        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, ytTools });
+        AddButton(ytTools, "Wunsch suchen", () => SearchYouTubeMusic(youtubeRequests.SelectedItem as string));
+        AddButton(ytTools, "Wunsch entfernen", delegate
+        {
+            if (RemoveWish(youtubeRequests.SelectedItem as string)) ytStatus.Text = "Wunsch entfernt.";
+        });
+        ytQuery.KeyDown += (sender, args) =>
+        {
+            if (args.KeyCode != Keys.Enter) return;
+            args.SuppressKeyPress = true;
+            SearchYouTubeMusic(ytQuery.Text);
+        };
+        youtubeRequests.DoubleClick += delegate { SearchYouTubeMusic(youtubeRequests.SelectedItem as string); };
+        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, ytStatus, ytTools });
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
         spotifyQueue.Controls.Add(new SpotifyQueueControl { Dock = DockStyle.Fill });
         sources.TabPages.AddRange(new[] { local, remote, spotifyQueue, youtubeMusic });
@@ -111,6 +127,12 @@ internal sealed class MusicQueue : UserControl
             reminders.Enabled = collect.Checked;
         };
         reminders.Tick += delegate { if (this.chatAvailable() && !choices.Values.Any(c => c.Expires > DateTime.UtcNow)) prompt.Text = Hint; };
+    }
+
+    internal void BindSettings(Action<string, CheckBox> bind)
+    {
+        bind("collect-music-requests", collect);
+        bind("autoplay-music-requests", autoPlay);
     }
 
     internal bool ConsiderRequest(string handle, string message)
@@ -157,22 +179,23 @@ internal sealed class MusicQueue : UserControl
 
     internal void ResetChoices() { choices.Clear(); prompt.Text = collect.Checked ? Hint : ""; }
 
-    private bool AddWish(string text, bool manual = true)
+    private bool AddWish(string text, bool manual = true, Label feedback = null)
     {
+        var message = feedback ?? spotifyStatus;
         var title = text.Trim();
         if (title.Length < 2)
         {
-            if (manual) spotifyStatus.Text = "Gib einen Titel oder Künstler ein.";
+            if (manual) message.Text = "Gib einen Titel oder Künstler ein.";
             return false;
         }
         if (requests.Items.Cast<string>().Any(existing => string.Equals(existing, title, StringComparison.OrdinalIgnoreCase)))
         {
-            if (manual) spotifyStatus.Text = "Dieser Wunsch steht bereits in der Liste.";
+            if (manual) message.Text = "Dieser Wunsch steht bereits in der Liste.";
             return false;
         }
         if (requests.Items.Count >= 100)
         {
-            if (manual) spotifyStatus.Text = "Die Wunschliste ist voll.";
+            if (manual) message.Text = "Die Wunschliste ist voll.";
             return false;
         }
         var index = requests.Items.Add(title);
@@ -181,9 +204,23 @@ internal sealed class MusicQueue : UserControl
         if (manual)
         {
             requests.SelectedIndex = index;
-            spotifyStatus.Text = "Im Bot gespeichert. Öffne den Wunsch und füge den Titel in Spotify zur Warteschlange hinzu.";
+            message.Text = "Wunsch in der Bot-Liste gespeichert.";
         }
         return true;
+    }
+
+    private bool RemoveWish(string title)
+    {
+        if (title == null) return false;
+        requests.Items.Remove(title);
+        youtubeRequests.Items.Remove(title);
+        return true;
+    }
+
+    private static void SearchYouTubeMusic(string title)
+    {
+        if (!string.IsNullOrWhiteSpace(title))
+            OpenYouTube("https://music.youtube.com/search?q=" + Uri.EscapeDataString(title.Trim()));
     }
 
     internal static void OpenYouTube(string address)

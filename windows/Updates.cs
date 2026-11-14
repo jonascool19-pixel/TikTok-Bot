@@ -14,6 +14,7 @@ internal sealed class Updates : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Top, Height = 44 };
     private readonly Button check = new Button { Text = "Nach Updates suchen", AutoSize = true };
     private readonly Button install = new Button { Text = "Update installieren", AutoSize = true, Enabled = false };
+    private readonly ProgressBar progress = new ProgressBar { Dock = DockStyle.Top, Height = 20, Visible = false };
     private Asset available;
     private readonly Version current;
     private Version notified;
@@ -31,7 +32,7 @@ internal sealed class Updates : UserControl
         status.Text = "Installierte Version: " + current.ToString(3);
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
         tools.Controls.AddRange(new Control[] { check, install });
-        Controls.AddRange(new Control[] { status, tools });
+        Controls.AddRange(new Control[] { progress, status, tools });
         check.Click += async delegate { await Check(); };
         install.Click += async delegate { await Install(); };
     }
@@ -90,27 +91,60 @@ internal sealed class Updates : UserControl
         var asset = available;
         if (asset == null) return;
         check.Enabled = install.Enabled = false;
-        status.Text = "Setup wird geladen und geprüft …";
+        status.Text = "Download wird vorbereitet …";
+        progress.Style = ProgressBarStyle.Marquee;
+        progress.Visible = true;
         try
         {
             var folder = Path.Combine(Path.GetTempPath(), "TikTokBot-Update-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
             var file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
-            using (var response = await Client.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead))
+            using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(15)))
+            using (var response = await Client.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
             {
                 response.EnsureSuccessStatusCode();
+                var total = response.Content.Headers.ContentLength ?? asset.size;
+                var watch = Stopwatch.StartNew();
+                long received = 0;
+                long updatedAt = -250;
+                var buffer = new byte[128 * 1024];
                 using (var input = await response.Content.ReadAsStreamAsync())
-                using (var destination = File.Create(file)) await input.CopyToAsync(destination);
+                using (var destination = File.Create(file))
+                {
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, 0, buffer.Length, timeout.Token)) != 0)
+                    {
+                        await destination.WriteAsync(buffer, 0, read, timeout.Token);
+                        received += read;
+                        if (IsDisposed) return;
+                        if (watch.ElapsedMilliseconds - updatedAt < 250 && received != total) continue;
+                        updatedAt = watch.ElapsedMilliseconds;
+                        if (total > 0)
+                        {
+                            var percent = (int)Math.Min(100, received * 100.0 / total);
+                            if (progress.Style != ProgressBarStyle.Continuous) progress.Style = ProgressBarStyle.Continuous;
+                            progress.Value = percent;
+                            var eta = watch.Elapsed.TotalSeconds >= 2 && received > 0 ?
+                                TimeSpan.FromSeconds(Math.Min(86400, Math.Max(0, (total - received) * watch.Elapsed.TotalSeconds / received))) : (TimeSpan?)null;
+                            status.Text = "Download: " + percent + " % · " + (eta.HasValue ? "noch ca. " + eta.Value.ToString(@"hh\:mm\:ss") : "Restzeit wird berechnet");
+                        }
+                        else status.Text = "Download: " + (received / 1048576.0).ToString("0.0") + " MiB übertragen.";
+                    }
+                }
             }
-            using (var sha = SHA256.Create())
-            using (var input = File.OpenRead(file))
-                if (!("sha256:" + BitConverter.ToString(sha.ComputeHash(input)).Replace("-", ""))
-                    .Equals(asset.digest, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException();
+            status.Text = "Download abgeschlossen. Prüfsumme wird geprüft …";
+            progress.Style = ProgressBarStyle.Marquee;
+            var digest = await Task.Run(() =>
+            {
+                using (var sha = SHA256.Create())
+                using (var input = File.OpenRead(file))
+                    return "sha256:" + BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "");
+            });
+            if (!digest.Equals(asset.digest, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
             if (IsDisposed) return;
             var installedPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
             using (var setup = Process.Start(new ProcessStartInfo(file,
-                "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
+                "/SILENT /SP- /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
             FindForm().Close();
         }
         catch (HttpRequestException error) { ReportError("Das Setup konnte nicht geladen werden.", error); }
@@ -119,7 +153,14 @@ internal sealed class Updates : UserControl
         catch (IOException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
         catch (UnauthorizedAccessException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
         catch (System.ComponentModel.Win32Exception error) { ReportError("Das Setup wurde nicht gestartet.", error); }
-        finally { if (!IsDisposed) check.Enabled = install.Enabled = true; }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                progress.Visible = false;
+                check.Enabled = install.Enabled = true;
+            }
+        }
     }
 
     private void ReportError(string message, Exception error)
@@ -140,5 +181,6 @@ internal sealed class Updates : UserControl
     {
         public string browser_download_url { get; set; }
         public string digest { get; set; }
+        public long size { get; set; }
     }
 }

@@ -35,6 +35,7 @@ internal sealed class LiveComments : UserControl
     internal event Action<string> AudienceChanged;
     internal bool ChatAvailable { get; private set; }
     internal event Action<bool> ConnectionChanged;
+    internal event Action<bool> VoiceSettingsSaved;
 
     internal void SetConnection(bool connected)
     {
@@ -164,9 +165,10 @@ internal sealed class LiveComments : UserControl
                 if (File.Exists(path)) File.Replace(staging, path, null);
                 else File.Move(staging, path);
                 savedVoice.Text = "Stimmeinstellungen gespeichert.";
+                if (VoiceSettingsSaved != null) VoiceSettingsSaved(true);
             }
-            catch (IOException error) { savedVoice.Text = "Stimmeinstellungen konnten nicht gespeichert werden."; ErrorLog.Write("Audio", savedVoice.Text, error); }
-            catch (UnauthorizedAccessException error) { savedVoice.Text = "Stimmeinstellungen konnten nicht gespeichert werden."; ErrorLog.Write("Audio", savedVoice.Text, error); }
+            catch (IOException error) { ReportVoiceSaveError(error); }
+            catch (UnauthorizedAccessException error) { ReportVoiceSaveError(error); }
         };
         voice.SelectedIndexChanged += save;
         style.SelectedIndexChanged += save;
@@ -174,6 +176,13 @@ internal sealed class LiveComments : UserControl
         speed.ValueChanged += save;
         read.CheckedChanged += save;
         saveVoice.Click += save;
+    }
+
+    private void ReportVoiceSaveError(Exception error)
+    {
+        savedVoice.Text = "Stimmeinstellungen konnten nicht gespeichert werden.";
+        ErrorLog.Write("Audio", savedVoice.Text, error);
+        if (VoiceSettingsSaved != null) VoiceSettingsSaved(false);
     }
 
     internal static bool VerifyVoicePreferences(string directory)
