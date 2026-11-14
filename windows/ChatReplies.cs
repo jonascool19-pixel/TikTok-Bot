@@ -25,7 +25,7 @@ internal sealed class ChatReplies : Form
     private readonly TextBox message = new TextBox { MaxLength = 500 };
     private readonly TextBox answer = new TextBox { ReadOnly = true, Multiline = true, Height = 68 };
     private readonly Button generate = new Button { Text = "Antwort testen", AutoSize = true };
-    private readonly CheckBox useLive = new CheckBox { Text = "Antwortvorschläge aus dem LIVE-Chat", AutoSize = true };
+    private readonly CheckBox useLive = new CheckBox { Text = "Automatisch Antwortvorschläge für LIVE-Kommentare erstellen", AutoSize = true };
     private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
     private DateTime nextLiveRequest;
 
@@ -33,7 +33,7 @@ internal sealed class ChatReplies : Form
     {
         Text = "Freie Chatantworten testen";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(560, 350);
+        ClientSize = new Size(690, 400);
         MinimumSize = new Size(490, 370);
         var fields = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2 };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -45,6 +45,7 @@ internal sealed class ChatReplies : Form
         AddField(fields, "Zuschauernachricht", message);
         AddField(fields, "Antwortvorschlag", answer);
         fields.Controls.Add(useLive, 1, fields.RowCount++);
+        fields.Controls.Add(new Label { Text = "Versand über das TikTok-Chatfeld", AutoSize = true }, 1, fields.RowCount++);
         fields.Controls.Add(generate, 1, fields.RowCount++);
         Controls.Add(fields);
         AcceptButton = generate;

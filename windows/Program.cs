@@ -30,6 +30,13 @@ internal sealed class BotWindow : Form
     private readonly Label account = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Bot-Konto: noch nicht erkannt" };
     private readonly Timer accountTimer = new Timer { Interval = 4000 };
     private bool checkingAccount;
+    private readonly Timer liveTimer = new Timer { Interval = 60000 };
+    private readonly CheckBox monitor = new CheckBox { Text = "LIVE automatisch prüfen", AutoSize = true };
+    private readonly CheckBox muteLive = new CheckBox { Text = "TikTok-LIVE-Ton stumm", AutoSize = true, Checked = true };
+    private string watchedRoom;
+    private string botHandle;
+    private string configuredHandle;
+    private bool missingAccountLogged;
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
     private readonly bool smokeTest;
     private ChatReplies replyDialog;
@@ -47,10 +54,10 @@ internal sealed class BotWindow : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1180, 820);
-        MinimumSize = new Size(900, 430);
+        MinimumSize = new Size(1000, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
-        var replies = new Button { Text = "Chatantworten testen", AutoSize = true };
+        var replies = new Button { Text = "Chatantworten", AutoSize = true };
         replies.Click += delegate
         {
             if (replyDialog != null)
@@ -92,6 +99,80 @@ internal sealed class BotWindow : Form
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
         tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
+        var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
+        var nickname = new Button { Text = "Bot-Profil / Spitzname ändern", AutoSize = true };
+        nickname.Click += delegate
+        {
+            var core = browser.CoreWebView2;
+            var name = configuredHandle ?? botHandle;
+            if (core != null)
+            {
+                tabs.SelectedTab = liveTab;
+                core.Navigate(name == null ? "https://www.tiktok.com/login" : "https://www.tiktok.com/" + name);
+                status.Text = "Wähle auf deinem TikTok-Profil „Profil bearbeiten“, um den Spitznamen zu ändern.";
+            }
+        };
+        muteLive.CheckedChanged += delegate
+        {
+            if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
+        };
+        liveOptions.Controls.AddRange(new Control[] { monitor, nickname, muteLive });
+        ConfigureLiveMonitor();
+        var accountTab = new TabPage("Bot-Konto");
+        var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
+        var signIn = new Button { Text = "Bei TikTok anmelden", AutoSize = true };
+        signIn.Click += delegate { if (login.Enabled) { tabs.SelectedTab = liveTab; login.PerformClick(); } };
+        var configured = new TextBox { Width = 260, AccessibleName = "Bot-Konto @Name" };
+        var saveAccount = new Button { Text = "@Name speichern", AutoSize = true };
+        var accountHelp = new Label { AutoSize = true, Text = "Die TikTok-Sitzung wird im lokalen Browserprofil gespeichert." };
+        var accountPath = Path.Combine(data, "bot-account.txt");
+        if (!smokeTest && File.Exists(accountPath))
+        {
+            try
+            {
+                configured.Text = File.ReadAllText(accountPath).Trim();
+                if (Regex.IsMatch(configured.Text, @"\A@[a-zA-Z0-9_.]{1,64}\z")) configuredHandle = configured.Text;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        saveAccount.Click += delegate
+        {
+            var name = configured.Text.Trim();
+            if (!Regex.IsMatch(name, @"\A@[a-zA-Z0-9_.]{1,64}\z"))
+            {
+                accountHelp.Text = "Gib den öffentlichen TikTok-@Namen ein.";
+                return;
+            }
+            try
+            {
+                Directory.CreateDirectory(data);
+                File.WriteAllText(accountPath, name);
+                configuredHandle = name;
+                missingAccountLogged = false;
+                accountHelp.Text = "Gespeichert: " + name + ". Die Anmeldung erfolgt bei TikTok.";
+            }
+            catch (IOException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (UnauthorizedAccessException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
+        };
+        var diagnostics = new Button { Text = "Fehlerprotokoll anzeigen", AutoSize = true };
+        diagnostics.Click += delegate
+        {
+            using (var dialog = new Form { Text = "Fehlerprotokoll", Width = 800, Height = 430, StartPosition = FormStartPosition.CenterParent })
+            {
+                var log = Path.Combine(data, "connection.log");
+                var content = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical };
+                try { content.Text = File.Exists(log) ? File.ReadAllText(log) : "Keine Fehler protokolliert."; }
+                catch (IOException) { content.Text = "Fehlerprotokoll nicht verfügbar."; }
+                catch (UnauthorizedAccessException) { content.Text = "Fehlerprotokoll nicht verfügbar."; }
+                dialog.Controls.Add(content);
+                dialog.ShowDialog(this);
+            }
+        };
+        accountTools.Controls.AddRange(new Control[] { signIn, new Label { Text = "Öffentlicher @Name des Bot-Kontos", AutoSize = true }, configured, saveAccount, accountHelp, diagnostics });
+        accountTab.Controls.Add(accountTools);
+        tabs.TabPages.Insert(1, accountTab);
+        Controls.Add(liveOptions);
         AcceptButton = open;
         open.Click += delegate
         {
@@ -101,10 +182,68 @@ internal sealed class BotWindow : Form
                 status.Text = "Gib einen @Namen oder einen vollständigen TikTok-LIVE-Link ein.";
                 return;
             }
+            if (monitor.Checked) SaveMonitor(target);
             browser.CoreWebView2.Navigate(target);
         };
         login.Click += delegate { browser.CoreWebView2.Navigate("https://www.tiktok.com/login"); };
         Shown += InitializeBrowser;
+    }
+
+    private void ConfigureLiveMonitor()
+    {
+        if (smokeTest) return;
+        var file = Path.Combine(data, "watched-live.txt");
+        try
+        {
+            if (File.Exists(file)) watchedRoom = LiveAddress(File.ReadAllText(file));
+            if (watchedRoom != null)
+            {
+                room.Text = watchedRoom;
+                monitor.Checked = true;
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        monitor.CheckedChanged += delegate
+        {
+            var target = monitor.Checked ? LiveAddress(room.Text) : null;
+            if (monitor.Checked && target == null)
+            {
+                monitor.Checked = false;
+                status.Text = "Gib zuerst einen @Namen oder LIVE-Link ein.";
+                return;
+            }
+            SaveMonitor(target);
+            if (target != null && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(target);
+        };
+        liveTimer.Tick += async delegate
+        {
+            var core = browser.CoreWebView2;
+            var target = watchedRoom;
+            if (core == null || target == null) return;
+            var source = core.Source;
+            // Leave login, profile editing and manually opened pages alone.
+            if (!string.Equals(LiveAddress(source ?? ""), target, StringComparison.OrdinalIgnoreCase)) return;
+            try
+            {
+                var connected = await core.ExecuteScriptAsync("Boolean(document.querySelector('[data-e2e=live-chat-container], [data-e2e=chat-room], video'))");
+                if (!IsDisposed && watchedRoom == target && core.Source == source && connected == "false")
+                    core.Navigate(target);
+            }
+            catch (InvalidOperationException) { }
+        };
+    }
+
+    private void SaveMonitor(string target)
+    {
+        watchedRoom = target;
+        try
+        {
+            Directory.CreateDirectory(data);
+            File.WriteAllText(Path.Combine(data, "watched-live.txt"), target ?? "");
+        }
+        catch (IOException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
+        catch (UnauthorizedAccessException error) { Report("LIVE-Ziel konnte nicht gespeichert werden.", error.GetType().Name); }
     }
 
     private static string LiveAddress(string input)
@@ -128,6 +267,7 @@ internal sealed class BotWindow : Form
             var core = browser.CoreWebView2;
             core.Settings.IsWebMessageEnabled = false;
             core.Settings.AreHostObjectsAllowed = false;
+            core.IsMuted = muteLive.Checked;
             if (smokeTest)
             {
                 core.NavigationCompleted += async (source, result) =>
@@ -184,6 +324,8 @@ internal sealed class BotWindow : Form
             accountTimer.Start();
             open.Enabled = login.Enabled = true;
             status.Text = "Öffne deinen LIVE oder melde das Bot-Konto an.";
+            liveTimer.Start();
+            if (watchedRoom != null) core.Navigate(watchedRoom);
         }
         catch (Exception error)
         {
@@ -215,7 +357,24 @@ internal sealed class BotWindow : Form
                 })()");
             if (IsDisposed) return;
             var handle = Regex.Match(result, @"\A""(@[a-zA-Z0-9_.]{1,64})""\z");
-            account.Text = handle.Success ? "Bot-Konto: " + handle.Groups[1].Value : "Bot-Konto: noch nicht erkannt";
+            botHandle = handle.Success ? handle.Groups[1].Value : null;
+            if (botHandle != null)
+            {
+                account.Text = "TikTok-Sitzung: " + botHandle;
+                if (configuredHandle != null && !string.Equals(botHandle, configuredHandle, StringComparison.OrdinalIgnoreCase))
+                    account.Text += " · Gespeichertes Konto: " + configuredHandle;
+                missingAccountLogged = false;
+            }
+            else
+            {
+                account.Text = configuredHandle == null ? "Bot-Konto: noch nicht erkannt" :
+                    "Bot-Konto: " + configuredHandle + " gespeichert · Anmeldung konnte nicht bestätigt werden";
+                if (configuredHandle != null && !missingAccountLogged)
+                {
+                    WriteLog("Bot-Konto", "TikTok zeigte keinen Kontonamen zur Bestätigung der Anmeldung.");
+                    missingAccountLogged = true;
+                }
+            }
         }
         catch (InvalidOperationException) { if (!IsDisposed) account.Text = "Bot-Konto: noch nicht erkannt"; }
         finally { checkingAccount = false; }
@@ -223,13 +382,22 @@ internal sealed class BotWindow : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) accountTimer.Dispose();
+        if (disposing)
+        {
+            accountTimer.Dispose();
+            liveTimer.Dispose();
+        }
         base.Dispose(disposing);
     }
 
     private void Report(string message, string details)
     {
         status.Text = message;
+        WriteLog(message, details);
+    }
+
+    private void WriteLog(string message, string details)
+    {
         try { File.AppendAllText(Path.Combine(data, "connection.log"), DateTime.UtcNow.ToString("O") + " " + message + " " + details + Environment.NewLine); }
         catch (IOException) { status.Text += " Das Fehlerprotokoll ist nicht verfügbar."; }
         catch (UnauthorizedAccessException) { status.Text += " Das Fehlerprotokoll ist nicht verfügbar."; }

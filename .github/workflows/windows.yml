@@ -39,6 +39,21 @@ jobs:
           $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
           Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
           Copy-Item -LiteralPath windows/SpotifyControl.ps1 -Destination $app
+          $piperZip = Join-Path $env:RUNNER_TEMP 'piper.zip'
+          Invoke-WebRequest 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip' -OutFile $piperZip
+          if ((Get-FileHash $piperZip).Hash -ne 'F3C58906402B24F3A96D92145F58ACBA6D86C9B5DB896D207F78DC80811EFCEA') { throw 'Piper checksum mismatch.' }
+          Expand-Archive -LiteralPath $piperZip -DestinationPath $app
+          $piper = Join-Path $app 'piper'
+          Invoke-WebRequest 'https://raw.githubusercontent.com/rhasspy/piper/2023.11.14-2/LICENSE.md' -OutFile "$piper/Piper-LICENSE.md"
+          $sourceVoices = 'https://huggingface.co/rhasspy/piper-voices/resolve/6b9cfaacb4fb2e02a9621227e3c1a48bec9710c3/de/de_DE'
+          foreach ($voice in @(@('kerstin','low'), @('thorsten_emotional','medium'))) {
+            $name = "de_DE-$($voice[0])-$($voice[1])"
+            $url = "$sourceVoices/$($voice[0])/$($voice[1])"
+            foreach ($suffix in '.onnx','.onnx.json') {
+              Invoke-WebRequest "$url/$name$suffix" -OutFile "$piper/$name$suffix"
+            }
+            Invoke-WebRequest "$url/MODEL_CARD" -OutFile "$piper/$name-MODEL_CARD.md"
+          }
           $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
           $sources = @(Get-ChildItem -LiteralPath windows -Filter '*.cs' -File | Select-Object -ExpandProperty FullName)
           $versionSource = Join-Path $env:RUNNER_TEMP 'TikTokBot-Version.cs'
@@ -76,6 +91,17 @@ jobs:
           $shell = New-Object -ComObject WScript.Shell
           if ($shell.CreateShortcut($shortcut).TargetPath -ine $exe) { throw 'Desktop shortcut target is incorrect.' }
           Invoke-CheckedProcess $exe '--smoke-test'
+          $oldOutputEncoding = $OutputEncoding
+          $OutputEncoding = [Text.UTF8Encoding]::new($false)
+          try {
+            $installedPiper = Join-Path $installed 'piper'
+            foreach ($speaker in @(-1, 4, 0, 6, 7, 5)) {
+              $voice = if ($speaker -lt 0) { 'de_DE-kerstin-low' } else { 'de_DE-thorsten_emotional-medium' }
+              $wav = Join-Path $env:RUNNER_TEMP "piper-$speaker.wav"
+              'Hallo, schön dass du beim Livestream dabei bist.' | & "$installedPiper/piper.exe" --model "$installedPiper/$voice.onnx" --speaker ([Math]::Max(0,$speaker)) --output_file $wav
+              if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $wav).Length -lt 1024) { throw "Local voice failed: $voice / $speaker" }
+            }
+          } finally { $OutputEncoding = $oldOutputEncoding }
           Invoke-CheckedProcess (Join-Path $installed 'unins000.exe') '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
           if (Test-Path -LiteralPath $shortcut) { throw 'Uninstall left the desktop shortcut.' }
           if (Test-Path (Join-Path $installed 'TikTok-Bot.exe')) { throw 'Uninstall left the application installed.' }

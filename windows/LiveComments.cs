@@ -72,14 +72,12 @@ internal sealed class LiveComments : UserControl
         }
         catch (InvalidOperationException) { }
         localVoiceCount = voice.Items.Count;
-        foreach (var name in CharacterVoices.Names) voice.Items.Add(name + " · FakeYou (Englisch, online)");
+        foreach (var name in LocalVoices.Names) voice.Items.Add(name + " · Deutsch (lokal)");
         if (voice.SelectedIndex < 0) voice.SelectedIndex = 0;
         voice.SelectedIndexChanged += delegate
         {
             if (voice.SelectedIndex < localVoiceCount) return;
             StopSpeech();
-            read.Checked = false;
-            status.Text = "Bei einer Online-Stimme gehen vorgelesene Texte an FakeYou.";
         };
     }
 
@@ -164,11 +162,11 @@ internal sealed class LiveComments : UserControl
             var cancellation = new System.Threading.CancellationTokenSource();
             characterSpeech = cancellation;
             speaking = true;
-            try { await CharacterVoices.Speak(voice.SelectedIndex - localVoiceCount, text, (int)volume.Value, cancellation.Token); }
-            catch (OperationCanceledException) { if (!cancellation.IsCancellationRequested && !IsDisposed) status.Text = "FakeYou hat zu lange gebraucht."; }
+            try { await LocalVoices.Speak(voice.SelectedIndex - localVoiceCount, text, (int)volume.Value, cancellation.Token); }
+            catch (OperationCanceledException) { }
             catch (Exception error)
             {
-                if (!IsDisposed) status.Text = "FakeYou-Stimme derzeit nicht verfügbar (" + error.GetType().Name + ").";
+                if (!IsDisposed && !cancellation.IsCancellationRequested) status.Text = "Lokale Stimme nicht verfügbar (" + error.GetType().Name + ").";
             }
             finally
             {
