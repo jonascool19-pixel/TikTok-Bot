@@ -12,8 +12,8 @@ internal sealed class YouTubeQueue : UserControl
     private readonly WebView2 search = new WebView2 { Dock = DockStyle.Fill };
     private readonly WebView2 liveSearch = new WebView2 { Width = 320, Height = 240, Visible = false };
     private readonly WebView2 player = new WebView2 { Dock = DockStyle.Fill };
-    private readonly ListBox wishes = new ListBox { Width = 230, Height = 82, AccessibleName = "Offene YouTube-Wünsche" };
-    private readonly ListBox queue = new ListBox { Width = 230, Height = 82, AccessibleName = "YouTube-Warteschlange" };
+    private readonly ListBox wishes = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, AccessibleName = "Offene YouTube-Wünsche" };
+    private readonly ListBox queue = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, AccessibleName = "YouTube-Warteschlange" };
     private readonly TextBox input = new TextBox { Width = 285, AccessibleName = "Videotitel oder YouTube-Link" };
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32 };
     private readonly AppTabs views = new AppTabs();
@@ -61,15 +61,18 @@ internal sealed class YouTubeQueue : UserControl
         Button(tools, "Weiter", Next);
         Button(tools, "Stopp", Stop);
 
-        var lists = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        var lists = new TableLayoutPanel { Dock = DockStyle.Right, Width = 255, ColumnCount = 1, RowCount = 2, Padding = new Padding(6), AutoScroll = true };
+        lists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        lists.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        lists.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         var pending = ListPanel("Offene Chatwünsche", wishes);
-        Button(pending, "Wunsch suchen", FindWish);
-        Button(pending, "Wunsch entfernen", () => { if (wishes.SelectedIndex >= 0) wishes.Items.RemoveAt(wishes.SelectedIndex); });
+        Button(pending.Actions, "Wunsch suchen", FindWish);
+        Button(pending.Actions, "Wunsch entfernen", () => { if (wishes.SelectedIndex >= 0) wishes.Items.RemoveAt(wishes.SelectedIndex); });
         wishes.DoubleClick += delegate { FindWish(); };
         var upcoming = ListPanel("Warteschlange", queue);
-        Button(upcoming, "Auswahl entfernen", () => { if (queue.SelectedIndex >= 0) queue.Items.RemoveAt(queue.SelectedIndex); });
-        lists.Controls.Add(pending);
-        lists.Controls.Add(upcoming);
+        Button(upcoming.Actions, "Auswahl entfernen", () => { if (queue.SelectedIndex >= 0) queue.Items.RemoveAt(queue.SelectedIndex); });
+        lists.Controls.Add(pending.Panel, 0, 0);
+        lists.Controls.Add(upcoming.Panel, 0, 1);
         results.Controls.Add(search);
         playback.Controls.Add(player);
         views.AddPages(results, playback);
@@ -77,12 +80,20 @@ internal sealed class YouTubeQueue : UserControl
         timer.Tick += async delegate { await CheckPlayer(); };
     }
 
-    private static FlowLayoutPanel ListPanel(string label, ListBox list)
+    private sealed class QueuePanel
     {
-        var panel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        panel.Controls.Add(new Label { Text = label, AutoSize = true });
-        panel.Controls.Add(list);
-        return panel;
+        internal readonly Panel Panel = new Panel { Dock = DockStyle.Fill, MinimumSize = new System.Drawing.Size(0, 95) };
+        internal readonly FlowLayoutPanel Actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
+
+        internal QueuePanel(string title, ListBox list)
+        {
+            Panel.Controls.AddRange(new Control[] { list, Actions, new Label { Text = title, Dock = DockStyle.Top, Height = 23 } });
+        }
+    }
+
+    private static QueuePanel ListPanel(string label, ListBox list)
+    {
+        return new QueuePanel(label, list);
     }
 
     private static void Button(Control panel, string label, Action action)
