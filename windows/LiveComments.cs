@@ -26,6 +26,8 @@ internal sealed class LiveComments : UserControl
     private int localVoiceCount;
     private readonly Queue<string> pending = new Queue<string>();
     internal event Action<string, string> ViewerComment;
+    internal event Action<string, string> ViewerActivity;
+    internal event Action<string> AudienceChanged;
     internal bool ChatAvailable { get; private set; }
 
     private const string ReadComments = @"
@@ -130,7 +132,10 @@ internal sealed class LiveComments : UserControl
         try
         {
             var result = await browser.ExecuteScriptAsync(ReadComments);
+            var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
             if (IsDisposed || current != generation) return;
+            var audience = json.Deserialize<string>(audienceResult);
+            if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
             var comments = json.Deserialize<List<Comment>>(result);
             ChatAvailable = comments != null;
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
@@ -143,6 +148,7 @@ internal sealed class LiveComments : UserControl
                 history.TopIndex = history.Items.Count - 1;
                 if (read.Checked) Speak(line);
                 var onViewer = ViewerComment;
+                if (ViewerActivity != null) ViewerActivity(comment.Handle, comment.Name);
                 if (onViewer != null) onViewer(comment.Handle, comment.Text);
             }
         }

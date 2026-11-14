@@ -91,9 +91,19 @@ internal sealed class BotWindow : Form
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
         var errorTab = new TabPage("Fehlerlog");
         errorTab.Controls.Add(new ErrorLogView { Dock = DockStyle.Fill });
+        var statsTab = new TabPage("LIVE-Auswertung");
+        var stats = new LiveStats { Dock = DockStyle.Fill };
+        statsTab.Controls.Add(stats);
+        comments.ViewerActivity += stats.Record;
+        comments.AudienceChanged += stats.SetAudience;
+        browser.NavigationStarting += (sender, args) =>
+        {
+            stats.SetRoom(LiveAddress(args.Uri));
+            stats.SetAudience(null);
+        };
         var repliesTab = new TabPage("Chatantworten");
         repliesTab.Controls.Add(replies);
-        tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, updatesTab, errorTab });
+        tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, statsTab, updatesTab, errorTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var nickname = new Button { Text = "Bot-Profil / Spitzname ändern", AutoSize = true };
