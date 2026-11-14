@@ -74,6 +74,12 @@ jobs:
           $wpf = Join-Path (Split-Path $csc) 'WPF'
           & $csc /nologo /warnaserror /codepage:65001 /target:winexe /platform:x64 "/win32icon:$icon" "/out:$app\TikTok-Bot.exe" "/reference:$core" "/reference:$forms" "/reference:$wpf\System.Speech.dll" "/reference:$wpf\PresentationCore.dll" "/reference:$wpf\WindowsBase.dll" /reference:System.Net.Http.dll /reference:System.Web.Extensions.dll /reference:System.Security.dll $sources
           if ($LASTEXITCODE -ne 0) { throw 'Application compilation failed.' }
+          $runtime = Join-Path (Resolve-Path windows/build) 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2124701' -OutFile $runtime
+          $runtimeSignature = Get-AuthenticodeSignature -FilePath $runtime
+          if ($runtimeSignature.Status -ne 'Valid' -or $runtimeSignature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Microsoft Corporation(,|$)') {
+            throw 'WebView2 offline installer signature verification failed.'
+          }
           $inno = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
           & $inno "/DAppVersion=$version" windows/installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }

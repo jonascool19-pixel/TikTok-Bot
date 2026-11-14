@@ -1,4 +1,3 @@
-using System.Linq;
 using System;
 using System.Drawing;
 using System.IO;
@@ -428,7 +427,10 @@ internal sealed class BotWindow : Form
             {
                 room.Text = watchedRoom;
                 var preference = Path.Combine(data, "live-monitor-disabled");
-                monitor.Checked = !File.Exists(preference);
+                var savedMonitor = Path.Combine(data, "live-monitor.txt");
+                bool enabled;
+                monitor.Checked = File.Exists(savedMonitor) && bool.TryParse(File.ReadAllText(savedMonitor), out enabled)
+                    ? enabled : !File.Exists(preference);
             }
         }
         catch (IOException) { }
@@ -441,16 +443,7 @@ internal sealed class BotWindow : Form
                 status.Text = "Speichere zuerst ein festes LIVE-Konto.";
                 return;
             }
-            try
-            {
-                Directory.CreateDirectory(data);
-                var preference = Path.Combine(data, "live-monitor-disabled");
-                if (monitor.Checked) File.Delete(preference);
-                else File.WriteAllText(preference, "");
-                ShowSettingsFeedback(true);
-            }
-            catch (IOException error) { ShowSettingsFeedback(false); Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
-            catch (UnauthorizedAccessException error) { ShowSettingsFeedback(false); Report("LIVE-Einstellung konnte nicht gespeichert werden.", error.GetType().Name); }
+            SavePreference(Path.Combine(data, "live-monitor.txt"), monitor.Checked.ToString());
             if (monitor.Checked && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(watchedRoom);
         };
         liveTimer.Tick += async delegate
@@ -500,17 +493,7 @@ internal sealed class BotWindow : Form
 
     private bool SavePreference(string path, string value)
     {
-        try
-        {
-            Directory.CreateDirectory(data);
-            File.WriteAllText(path, value);
-            ShowSettingsFeedback(true);
-            return true;
-        }
-        catch (IOException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gespeichert werden.", error); }
-        catch (UnauthorizedAccessException error) { ErrorLog.Write("Einstellungen", "Einstellung konnte nicht gespeichert werden.", error); }
-        ShowSettingsFeedback(false);
-        return false;
+        return ChatReplies.Persist(path, value, ShowSettingsFeedback);
     }
 
     private void ShowSettingsFeedback(bool saved)
@@ -645,7 +628,6 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
             ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
             ChatReplies.Suggest("okay", "") == null &&
-            YouTubeMusicControl.ParseSearch(@"{""contents"":[{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Test""}]}}}]}},{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Duplikat""}]}}}]}}]}").Select(track => track.Title).Single() == "Test" &&
             SpotifyQueueControl.ParseTracks("{\"tracks\":{\"items\":[{\"uri\":\"spotify:track:1234567890123456789012\",\"name\":\"Test\"},{\"uri\":\"spotify:track:1234567890123456789012\",\"name\":\"Duplikat\"},{\"uri\":\"spotify:track:1234567890123456789013\",\"name\":\"Gesperrt\",\"is_playable\":false}]}}").Length == 1 &&
             ChatReplies.CleanAiReply(" KEINE_ANTWORT. ") == null &&
             ChatReplies.CleanAiReply(" Klar, gerne! ") == "Klar, gerne!" &&

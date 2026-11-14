@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Linq;
 using System.Web.Script.Serialization;
 using System;
@@ -25,8 +26,13 @@ internal sealed class YouTubeQueue : UserControl
     private int startAttempts;
     private bool wishSearch;
 
-    internal YouTubeQueue(string directory)
+    private readonly string origin;
+    private readonly bool music;
+
+    internal YouTubeQueue(string directory, bool music = false)
     {
+        this.music = music;
+        origin = music ? "https://music.youtube.com" : "https://www.youtube.com";
         var profile = Path.Combine(directory, "YouTubeProfile");
         search.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = profile };
         player.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = profile };
@@ -38,7 +44,7 @@ internal sealed class YouTubeQueue : UserControl
         Controls.Add(liveSearch);
         search.VisibleChanged += delegate
         {
-            if (search.Visible && search.Source == null) Navigate(search, "https://www.youtube.com/");
+            if (search.Visible && search.Source == null) Navigate(search, origin + "/");
         };
         player.NavigationCompleted += (sender, args) =>
         {
@@ -91,7 +97,7 @@ internal sealed class YouTubeQueue : UserControl
         if (id != null)
         {
             Enqueue(id);
-            return "YouTube-Link in die Warteschlange übernommen.";
+            return (music ? "YouTube Music" : "YouTube") + ": Titel in die Warteschlange übernommen.";
         }
         wishes.Items.Add(title);
         if (wishes.Items.Count == 1)
@@ -106,7 +112,7 @@ internal sealed class YouTubeQueue : UserControl
     {
         try
         {
-            var expected = new Uri("https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query));
+            var expected = new Uri(SearchAddress(query));
             await liveSearch.EnsureCoreWebView2Async();
             if (IsDisposed) return null;
             liveSearch.CoreWebView2.IsMuted = true;
@@ -115,20 +121,17 @@ internal sealed class YouTubeQueue : UserControl
             {
                 await Task.Delay(500);
                 if (IsDisposed) return null;
-                var source = liveSearch.Source;
-                if (source == null || source.Host != expected.Host || source.AbsolutePath != expected.AbsolutePath ||
-                    Uri.UnescapeDataString(source.Query) != Uri.UnescapeDataString(expected.Query)) continue;
                 var result = await liveSearch.CoreWebView2.ExecuteScriptAsync(@"(() => {
-                    if (location.origin !== 'https://www.youtube.com' || location.pathname !== '/results' ||
-                        new URLSearchParams(location.search).get('search_query') !== " +
+                    if (location.origin !== '" + origin + @"' || location.pathname !== '" + expected.AbsolutePath + @"' ||
+                        new URLSearchParams(location.search).get('" + (music ? "q" : "search_query") + @"') !== " +
                         new JavaScriptSerializer().Serialize(query) + @") return null;
-                    return Array.from(document.querySelectorAll('ytd-video-renderer a#video-title[href^=""/watch?v=""]'))
+                    return Array.from(document.querySelectorAll('" + (music ? "ytmusic-responsive-list-item-renderer a[href*=\"watch?v=\"], ytmusic-card-shelf-renderer a[href*=\"watch?v=\"]" : "ytd-video-renderer a#video-title[href^=\"/watch?v=\"]") + @"'))
                         .slice(0, 12).map(a => ({ Link: a.href, Title: a.textContent.trim() }));
                 })()");
                 var rows = new JavaScriptSerializer().Deserialize<SearchRow[]>(result);
                 if (rows == null || rows.Length == 0) continue;
                 var tracks = rows.Where(row => !string.IsNullOrWhiteSpace(row.Link) && !string.IsNullOrWhiteSpace(row.Title))
-                    .Select(row => new MusicMatch(YouTubeMusicControl.VideoId(row.Link), row.Title))
+                    .Select(row => new MusicMatch(VideoId(row.Link), row.Title))
                     .Where(row => row.Id != null).GroupBy(row => row.Id).Select(group => group.First()).Take(3).ToArray();
                 if (tracks.Length > 0) return tracks;
             }
@@ -159,14 +162,14 @@ internal sealed class YouTubeQueue : UserControl
     {
         if (string.IsNullOrWhiteSpace(query)) return;
         wishSearch = false;
-        var id = YouTubeMusicControl.VideoId(query.Trim());
+        var id = VideoId(query.Trim());
         views.SelectedTab = results;
-        Navigate(search, id == null ? "https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query.Trim()) : Address(id));
+        Navigate(search, id == null ? SearchAddress(query.Trim()) : Address(id));
     }
 
     private void AddInput(bool openVideo)
     {
-        var id = YouTubeMusicControl.VideoId(openVideo ? (search.Source == null ? "" : search.Source.AbsoluteUri) : input.Text.Trim());
+        var id = VideoId(openVideo ? (search.Source == null ? "" : search.Source.AbsoluteUri) : input.Text.Trim());
         if (id == null)
         {
             status.Text = openVideo ? "Öffne zuerst ein Video in der Suche." : "Füge einen gültigen YouTube-Videolink ein.";
@@ -187,7 +190,9 @@ internal sealed class YouTubeQueue : UserControl
         else status.Text = "Video eingereiht. Wartende Videos: " + queue.Items.Count;
     }
 
-    private static string Address(string id) { return "https://www.youtube.com/watch?v=" + id; }
+    private string Address(string id) { return origin + "/watch?v=" + id; }
+
+    private string SearchAddress(string query) { return origin + (music ? "/search?q=" : "/results?search_query=") + Uri.EscapeDataString(query); }
 
     private void Next()
     {
@@ -199,7 +204,7 @@ internal sealed class YouTubeQueue : UserControl
         }
         var address = (string)queue.Items[0];
         queue.Items.RemoveAt(0);
-        current = YouTubeMusicControl.VideoId(address);
+        current = VideoId(address);
         generation++;
         startAttempts = 10;
         status.Text = "YouTube-Video wird geöffnet. Wenn es nicht startet, klicke im Player auf Wiedergabe.";
@@ -227,11 +232,11 @@ internal sealed class YouTubeQueue : UserControl
         {
             // Ignore ads and any video opened directly in the player.
             var result = await player.CoreWebView2.ExecuteScriptAsync(@"(() => {
-                if (location.origin !== 'https://www.youtube.com' || location.pathname !== '/watch' ||
+                if (location.origin !== '" + origin + @"' || location.pathname !== '/watch' ||
                     new URLSearchParams(location.search).get('v') !== '" + id + @"') return 'other';
-                const p = document.querySelector('#movie_player');
-                const v = p?.querySelector('video');
-                if (!v || p.classList.contains('ad-showing')) return 'waiting';
+                const p = document.querySelector('#movie_player, ytmusic-player');
+                const v = p?.querySelector('video') || document.querySelector('video.html5-main-video');
+                if (!v || v.closest('.ad-showing') || p?.classList.contains('ad-showing')) return 'waiting';
                 if (v.ended) return 'ended';
                 if (!v.paused) return 'playing';
                 " + (startAttempts > 0 ? "v.play().catch(() => {});" : "") + @"
@@ -258,6 +263,22 @@ internal sealed class YouTubeQueue : UserControl
             status.Text = "Die YouTube-Ansicht konnte nicht geöffnet werden.";
             ErrorLog.Write("YouTube", status.Text, error);
         }
+    }
+
+    internal static string VideoId(string input)
+    {
+        var value = input.Trim();
+        Uri uri;
+        if (Uri.TryCreate(value, UriKind.Absolute, out uri) && uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo.Length == 0)
+        {
+            if (uri.Host == "youtu.be") value = uri.AbsolutePath.Trim('/');
+            else if ((uri.Host == "music.youtube.com" || uri.Host == "www.youtube.com" || uri.Host == "youtube.com") && uri.AbsolutePath == "/watch")
+            {
+                var match = Regex.Match(uri.Query, @"(?:^\?|&)v=([A-Za-z0-9_-]{11})(?:&|$)");
+                value = match.Success ? match.Groups[1].Value : "";
+            }
+        }
+        return Regex.IsMatch(value, @"\A[A-Za-z0-9_-]{11}\z") ? value : null;
     }
 
     protected override void Dispose(bool disposing)

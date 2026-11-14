@@ -4,7 +4,7 @@ Desktop-App für TikTok LIVE auf Windows x64. Öffne einen LIVE per `@Name` oder
 
 ## Installation und Updates
 
-Lade das [aktuelle Windows-Setup](https://github.com/jonascool19-pixel/TikTok-Bot/releases/latest/download/TikTok-Bot-Setup.exe) herunter und starte die EXE direkt. Das Setup installiert den Bot für den aktuellen Benutzer, auf Wunsch mit Desktop-Symbol. Windows benötigt die Microsoft Edge WebView2 Runtime.
+Lade das [aktuelle Windows-Setup](https://github.com/jonascool19-pixel/TikTok-Bot/releases/latest/download/TikTok-Bot-Setup.exe) herunter und starte die EXE direkt. Das Setup installiert den Bot für den aktuellen Benutzer, auf Wunsch mit Desktop-Symbol. Das Setup enthält die Microsoft Edge WebView2 Runtime und installiert sie bei Bedarf. Die lokale KI und die deutschen Stimmen sind ebenfalls enthalten.
 
 Im Reiter **Updates** sucht die App nach veröffentlichten Windows-Versionen dieses Repositorys, prüft das heruntergeladene Setup per SHA-256 und startet die Installation im bestehenden Ordner. Das TikTok-Profil, das gespeicherte Bot-Konto und das LIVE-Ziel liegen separat unter `%LOCALAPPDATA%\TikTok-Bot\WindowsPrototype`.
 

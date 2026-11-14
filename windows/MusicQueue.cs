@@ -16,10 +16,11 @@ internal sealed class MusicQueue : UserControl
     private bool playing;
     private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
-    private readonly ListBox youtubeRequests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "YouTube Music Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
     private readonly ComboBox wishSource = new ThemeComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Quelle für LIVE-Musikwünsche" };
+    private readonly YouTubeQueue youtubeMusicPlayer;
     private readonly YouTubeMusicControl pear;
+    private readonly CheckBox usePear = new CheckBox { Text = "LIVE-Wünsche an Pear Desktop senden", AutoSize = true, Dock = DockStyle.Top };
     private readonly YouTubeQueue youtube;
     private readonly SpotifyQueueControl spotifyQueueControl;
     private readonly Queue<RemoteWish> remotePending = new Queue<RemoteWish>();
@@ -39,7 +40,8 @@ internal sealed class MusicQueue : UserControl
     internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved)
     {
         this.chatAvailable = chatAvailable;
-        pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Bottom, Height = 155 };
+        pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Fill };
+        youtubeMusicPlayer = new YouTubeQueue(directory, true) { Dock = DockStyle.Fill };
         youtube = new YouTubeQueue(directory) { Dock = DockStyle.Fill };
         wishSource.Items.AddRange(new object[] { "Lokale Dateien", "Spotify", "YouTube Music", "YouTube" });
         var sourcePath = Path.Combine(directory, "music-wish-source.txt");
@@ -133,35 +135,15 @@ internal sealed class MusicQueue : UserControl
         local.Controls.AddRange(new Control[] { queue, status, tools });
         var remote = new TabPage("Spotify und Musikwünsche");
         remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus });
-        var youtubeMusic = new TabPage("YouTube Music und Musikwünsche");
-        var ytTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
-        var ytQuery = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "YouTube Music: Titel oder Interpret" };
-        var ytStatus = new Label { Dock = DockStyle.Bottom, Height = 30 };
-        ytTools.Controls.Add(ytQuery);
-        AddButton(ytTools, "YouTube Music öffnen / anmelden", () => OpenYouTube("https://music.youtube.com/"));
-        AddButton(ytTools, "Suchen", () => SearchYouTubeMusic(ytQuery.Text));
-        AddButton(ytTools, "Wunsch hinzufügen", delegate
-        {
-            if (AddWish(ytQuery.Text, feedback: ytStatus))
-            {
-                youtubeRequests.SelectedItem = ytQuery.Text.Trim();
-                ytQuery.Clear();
-                ytQuery.Focus();
-            }
-        });
-        AddButton(ytTools, "Wunsch suchen", () => SearchYouTubeMusic(youtubeRequests.SelectedItem as string));
-        AddButton(ytTools, "Wunsch entfernen", delegate
-        {
-            if (RemoveWish(youtubeRequests.SelectedItem as string)) ytStatus.Text = "Wunsch entfernt.";
-        });
-        ytQuery.KeyDown += (sender, args) =>
-        {
-            if (args.KeyCode != Keys.Enter) return;
-            args.SuppressKeyPress = true;
-            SearchYouTubeMusic(ytQuery.Text);
-        };
-        youtubeRequests.DoubleClick += delegate { SearchYouTubeMusic(youtubeRequests.SelectedItem as string); };
-        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, pear, ytStatus, ytTools });
+        var youtubeMusic = new TabPage("YouTube Music");
+        var musicModes = new AppTabs();
+        var builtIn = new TabPage("Player im Bot");
+        var desktop = new TabPage("Desktop-App");
+        builtIn.Controls.Add(youtubeMusicPlayer);
+        desktop.Controls.AddRange(new Control[] { pear, usePear });
+        musicModes.AddPages(builtIn, desktop);
+        youtubeMusic.Controls.Add(musicModes);
+        usePear.CheckedChanged += delegate { ResetChoices(); };
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
         spotifyQueue.Controls.Add(spotifyQueueControl);
         AddButton(searchTools, "Wunsch in Spotify-Warteschlange", async delegate
@@ -191,6 +173,7 @@ internal sealed class MusicQueue : UserControl
     {
         bind("collect-music-requests", collect);
         bind("autoplay-music-requests", autoPlay);
+        bind("youtube-music-use-desktop", usePear);
     }
 
     internal bool ConsiderRequest(string handle, string message)
@@ -271,9 +254,10 @@ internal sealed class MusicQueue : UserControl
                 var session = wishSession;
                 if (!chatAvailable()) continue;
                 var source = wish.Source;
+                var desktopMusic = source == "YouTube Music" && usePear.Checked;
                 var id = wish.Selected == null
                     ? (source == "Spotify" ? SpotifyQueueControl.TrackUri(wish.Query) :
-                        wish.Query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeMusicControl.VideoId(wish.Query) : null)
+                        wish.Query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeQueue.VideoId(wish.Query) : null)
                     : wish.Selected.Id;
                 if (id == null)
                 {
@@ -283,13 +267,13 @@ internal sealed class MusicQueue : UserControl
                         var matches = await spotifyQueueControl.Search(wish.Query);
                         tracks = matches == null ? null : matches.Take(3).Select(track => new MusicMatch(track.Uri, track.ToString())).ToArray();
                     }
-                    else if (source == "YouTube Music") tracks = await pear.Search(wish.Query);
+                    else if (source == "YouTube Music") tracks = desktopMusic ? await pear.Search(wish.Query) : await youtubeMusicPlayer.SearchLive(wish.Query);
                     else tracks = await youtube.SearchLive(wish.Query);
                     if (!WishIsCurrent(session)) continue;
                     if (tracks == null || tracks.Length == 0)
                     {
                         prompt.Text = tracks == null ? source + "-Suche derzeit nicht verfügbar." : "Keine Treffer auf " + source + ".";
-                        if (source == "YouTube") prompt.Text += " " + youtube.AddLiveWish(wish.Query, null);
+                        if (source != "Spotify") prompt.Text += " " + (source == "YouTube" ? youtube : youtubeMusicPlayer).AddLiveWish(wish.Query, null);
                         continue;
                     }
                     if (tracks.Length > 1)
@@ -300,8 +284,8 @@ internal sealed class MusicQueue : UserControl
                     id = tracks[0].Id;
                 }
                 if (!WishIsCurrent(session)) continue;
-                if (source == "YouTube") { prompt.Text = youtube.AddLiveWish(wish.Query, id); continue; }
-                var added = source == "Spotify" ? await spotifyQueueControl.Enqueue(id) : await pear.QueueLiveWish(id);
+                if (source != "Spotify" && !desktopMusic) { prompt.Text = (source == "YouTube" ? youtube : youtubeMusicPlayer).AddLiveWish(wish.Query, id); continue; }
+                var added = desktopMusic ? await pear.QueueLiveWish(id) : await spotifyQueueControl.Enqueue(id);
                 if (WishIsCurrent(session))
                     prompt.Text = added ? "Titel in die Warteschlange von " + source + " aufgenommen."
                         : "Titel konnte nicht eingereiht werden. Prüfe die Verbindung zu " + source + ".";
@@ -355,7 +339,6 @@ internal sealed class MusicQueue : UserControl
             return false;
         }
         var index = requests.Items.Add(title);
-        youtubeRequests.Items.Add(title);
         if (WishAdded != null) WishAdded(title);
         if (manual)
         {
@@ -369,26 +352,7 @@ internal sealed class MusicQueue : UserControl
     {
         if (title == null) return false;
         requests.Items.Remove(title);
-        youtubeRequests.Items.Remove(title);
         return true;
-    }
-
-    private static void SearchYouTubeMusic(string title)
-    {
-        if (!string.IsNullOrWhiteSpace(title))
-            OpenYouTube("https://music.youtube.com/search?q=" + Uri.EscapeDataString(title.Trim()));
-    }
-
-    internal static void OpenYouTube(string address)
-    {
-        try { using (var launched = Process.Start(new ProcessStartInfo(address) { UseShellExecute = true })) { } }
-        catch (System.ComponentModel.Win32Exception error) { ErrorLog.Write("YouTube", "YouTube konnte nicht im Browser geöffnet werden.", error); }
-    }
-
-    private void QueueRequest(FileInfo file)
-    {
-        if (queue.Items.Count < 100) queue.Items.Add(file);
-        if (autoPlay.Checked && !playing) Next();
     }
 
     private sealed class Choice

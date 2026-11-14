@@ -18,6 +18,7 @@ RestartApplications=no
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
+Source: "build\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Flags: dontcopy solidbreak
 Source: "build\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [InstallDelete]
@@ -49,6 +50,37 @@ begin
   ProgressDetails.Left := WizardForm.ProgressGauge.Left;
   ProgressDetails.Top := WizardForm.ProgressGauge.Top + WizardForm.ProgressGauge.Height + ScaleY(10);
   ProgressDetails.Caption := 'Installation wird vorbereitet ...';
+end;
+
+function HasWebView2: Boolean;
+var
+  Version: String;
+  Key: String;
+begin
+  Key := 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  Result := (RegQueryStringValue(HKLM32, Key, 'pv', Version) and
+    (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKCU, Key, 'pv', Version) and
+    (Version <> '') and (Version <> '0.0.0.0'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+begin
+  Result := '';
+  if HasWebView2 then Exit;
+  WizardForm.PreparingLabel.Caption := 'Mitgelieferte Microsoft WebView2-Laufzeit wird installiert ...';
+  try
+    ExtractTemporaryFile('MicrosoftEdgeWebView2RuntimeInstallerX64.exe');
+    if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'),
+      '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      Result := Format('WebView2-Setup konnte nicht gestartet werden (Code %d).', [Code])
+    else if not HasWebView2 then
+      Result := Format('WebView2 konnte nicht eingerichtet werden (Code %d).', [Code]);
+  except
+    Result := 'WebView2 konnte nicht eingerichtet werden. ' + GetExceptionMessage;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
