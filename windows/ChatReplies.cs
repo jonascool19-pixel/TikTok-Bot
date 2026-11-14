@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -24,7 +25,8 @@ internal sealed class ChatReplies : UserControl
         "Warum wurde mein Musikwunsch nicht gefunden?", "Spielt der Bot Spotify im Stream?",
         "Was kannst du als Bot?", "Liest der Bot Kommentare vor?", "Welche Stimmen gibt es?",
         "Bist du ein Bot?", "Werden meine Kommentare gespeichert?", "Was bedeutet der grüne LIVE-Punkt?",
-        "Wie geht es dir?", "Na, wie geht’s dir heute?", "Alles gut bei dir?"
+        "Wie geht es dir?", "Na, wie geht’s dir heute?", "Alles gut bei dir?",
+        "Wie mache ich Musik?", "Wie kann ich Musik abspielen?", "Wo kann ich einen Song vorschlagen?"
     };
     private readonly CheckBox enabled = new CheckBox { Text = "LIVE-Kommentare automatisch prüfen", AutoSize = true, Checked = true };
     private readonly TextBox game = new TextBox { Width = 210, MaxLength = 100, AccessibleName = "Spielname optional" };
@@ -175,7 +177,8 @@ internal sealed class ChatReplies : UserControl
         LearningCandidate += (input, output) =>
         {
             var key = NormalizeQuestion(input);
-            if (key.Length == 0 || key.Length > 150 || suggested.ContainsKey(key) || custom.ContainsKey(key) || suggested.Count >= 50) return;
+            if (key.Length == 0 || key.Length > 150 || suggested.Count >= 50 ||
+                FindSavedAnswer(key, suggested) != null || FindSavedAnswer(key, custom) != null) return;
             var next = new Dictionary<string, string>(suggested, StringComparer.OrdinalIgnoreCase);
             next[key] = output;
             if (!Persist(learningPath, serializer.Serialize(next), delegate { })) return;
@@ -225,7 +228,8 @@ internal sealed class ChatReplies : UserControl
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         string result;
-        if (!custom.TryGetValue(NormalizeQuestion(text), out result)) result = Suggest(text, game.Text, requestsEnabled);
+        if (!custom.TryGetValue(NormalizeQuestion(text), out result))
+            result = Suggest(text, game.Text, requestsEnabled) ?? FindSavedAnswer(text, custom);
         if (result != null) { Add(result); return; }
         if (!useAi.Checked)
         {
@@ -278,6 +282,30 @@ internal sealed class ChatReplies : UserControl
     internal static string NormalizeQuestion(string text)
     {
         return Regex.Replace(text.Trim().TrimEnd('?', '!', '.', ',').TrimEnd(), @"\s+", " ");
+    }
+
+    internal static string FindSavedAnswer(string question, Dictionary<string, string> answers)
+    {
+        var normalized = NormalizeQuestion(question);
+        string exact;
+        if (answers.TryGetValue(normalized, out exact)) return exact;
+        // Match only closely related wording and keep negations significant.
+        var words = QuestionWords(normalized);
+        if (words.Count < 3) return null;
+        string match = null;
+        foreach (var entry in answers)
+        {
+            if (!words.SetEquals(QuestionWords(entry.Key))) continue;
+            if (match != null && !string.Equals(match, entry.Value, StringComparison.Ordinal)) return null;
+            match = entry.Value;
+        }
+        return match;
+    }
+
+    private static HashSet<string> QuestionWords(string question)
+    {
+        return new HashSet<string>(Regex.Split(question.ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(word => word.Length > 0 && word != "bitte" && word != "denn" && word != "eigentlich" && word != "mal"));
     }
 
     internal static bool Persist(string path, string value, Action<bool> saved)
@@ -357,11 +385,11 @@ internal sealed class ChatReplies : UserControl
         var message = text.Trim().ToLowerInvariant();
         if (Regex.IsMatch(message, @"\A(?:(?:na|hey|hallo|hi)[,!.]?\s+)?(?:wie geht(?: es|['’]?s)(?: dir| euch)?(?: heute)?|alles (?:gut|klar) bei (?:dir|euch)(?: heute)?)[\s?!.,]*\z"))
             return "Mir geht’s gut, danke! Und dir?";
-        if (Regex.IsMatch(message, @"\A(?:wie|was|kann|können|warum|welch)"))
+        if (Regex.IsMatch(message, @"\A(?:wie|was|wo|kann|können|warum|welch)"))
         {
             if (Regex.IsMatch(message, @"mehrere (?:treffer|versionen)|zwischen .*versionen"))
                 return "Wenn der Bot mehrere Versionen vorschlägt, antworte mit 1, 2 oder 3.";
-            if (Regex.IsMatch(message, @"musikwunsch|musikwünsche|liedwunsch|(?:lied|song|musik|titel).*wünsch|(?:song|lied).*request"))
+            if (Regex.IsMatch(message, @"musikwunsch|musikwünsche|liedwunsch|(?:lied|song|musik|titel).*(?:wünsch|request|vorschlag|abspiel|anmach)|\bwie (?:mach(?:e|t)?|start(?:e|et)?) (?:ich|man) (?:hier )?musik\b"))
             {
                 if (!requestsEnabled) return "Musikwünsche sind in diesem LIVE gerade deaktiviert.";
                 if (Regex.IsMatch(message, @"nicht gefunden|kein treffer"))

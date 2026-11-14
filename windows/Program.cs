@@ -632,6 +632,10 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("Alles gut bei dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Wie heißt das Spiel?", "Minecraft") == "Das Spiel heißt Minecraft." &&
             ChatReplies.Suggest("Wie kann ich mir ein Lied wünschen?", "", true).Contains("#Musikwunsch") &&
+            ChatReplies.Suggest("Wie mache ich Musik?", "", true).Contains("#Musikwunsch") &&
+            ChatReplies.Suggest("Wie mache ich Musik?", "", false).Contains("deaktiviert") &&
+            ChatReplies.FindSavedAnswer("Wo finde ich denn die Regeln?", new System.Collections.Generic.Dictionary<string, string> { { "Wo finde ich die Regeln", "Im Profil." } }) == "Im Profil." &&
+            ChatReplies.FindSavedAnswer("Wo finde ich nicht die Regeln?", new System.Collections.Generic.Dictionary<string, string> { { "Wo finde ich die Regeln", "Im Profil." } }) == null &&
             ChatReplies.Suggest("Kann ich mir einen Song wünschen?", "", false).Contains("deaktiviert") &&
             ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
             ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
