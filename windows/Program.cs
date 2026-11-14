@@ -133,7 +133,16 @@ internal sealed class BotWindow : Form
         };
         var repliesTab = new TabPage("Chatantworten");
         repliesTab.Controls.Add(replies);
-        tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, statsTab, updatesTab, errorTab });
+        var settingsTab = new TabPage("Einstellungen");
+        var settings = new TabControl { Dock = DockStyle.Fill };
+        settings.TabPages.AddRange(new[] { updatesTab, liveTab, errorTab });
+        settingsTab.Controls.Add(settings);
+        Action<TabPage> openSetting = page =>
+        {
+            tabs.SelectedTab = settingsTab;
+            settings.SelectedTab = page;
+        };
+        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, statsTab, settingsTab });
         tabs.SelectedTab = chatTab;
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
@@ -141,7 +150,7 @@ internal sealed class BotWindow : Form
         Action<bool> updateLiveStatus = connected =>
         {
             liveStatus.ForeColor = connected ? Color.DarkGreen : Color.Firebrick;
-            liveStatus.Text = connected ? "● LIVE verbunden" : "● LIVE nicht verbunden";
+            liveStatus.Text = connected ? "● LIVE verbunden" : "● Nicht live";
         };
         updateLiveStatus(false);
         comments.ConnectionChanged += updateLiveStatus;
@@ -152,7 +161,7 @@ internal sealed class BotWindow : Form
             var name = configuredHandle ?? botHandle;
             if (core != null)
             {
-                tabs.SelectedTab = liveTab;
+                openSetting(liveTab);
                 core.Navigate(name == null ? "https://www.tiktok.com/login" : "https://www.tiktok.com/" + name);
                 status.Text = "Wähle auf deinem TikTok-Profil „Profil bearbeiten“, um den Spitznamen zu ändern.";
             }
@@ -162,11 +171,11 @@ internal sealed class BotWindow : Form
             if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
         };
         liveOptions.Controls.AddRange(new Control[] { liveStatus, monitor, nickname, muteLive });
-        ConfigureLiveMonitor(() => tabs.SelectedTab == liveTab);
+        ConfigureLiveMonitor(() => tabs.SelectedTab == settingsTab && settings.SelectedTab == liveTab);
         var accountTab = new TabPage("Bot-Konto");
         var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
         var signIn = new Button { Text = "Bei TikTok anmelden", AutoSize = true };
-        signIn.Click += delegate { if (login.Enabled) { tabs.SelectedTab = liveTab; login.PerformClick(); } };
+        signIn.Click += delegate { if (login.Enabled) login.PerformClick(); };
         var configured = new TextBox { Width = 260, AccessibleName = "Bot-Konto @Name" };
         var saveAccount = new Button { Text = "@Name speichern", AutoSize = true };
         var accountHelp = new Label { AutoSize = true, Text = "Die TikTok-Sitzung wird im lokalen Browserprofil gespeichert." };
@@ -201,10 +210,10 @@ internal sealed class BotWindow : Form
             catch (UnauthorizedAccessException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
         };
         var diagnostics = new Button { Text = "Fehlerprotokoll anzeigen", AutoSize = true };
-        diagnostics.Click += delegate { tabs.SelectedTab = errorTab; };
+        diagnostics.Click += delegate { openSetting(errorTab); };
         accountTools.Controls.AddRange(new Control[] { signIn, new Label { Text = "Öffentlicher @Name des Bot-Kontos", AutoSize = true }, configured, saveAccount, accountHelp, diagnostics });
         accountTab.Controls.Add(accountTools);
-        tabs.TabPages.Insert(1, accountTab);
+        settings.TabPages.Insert(0, accountTab);
         Controls.Add(liveOptions);
         AcceptButton = open;
         open.Click += delegate
@@ -221,7 +230,7 @@ internal sealed class BotWindow : Form
         {
             if (!checkingAccount && !await RefreshAccount() && !IsDisposed)
             {
-                tabs.SelectedTab = liveTab;
+                openSetting(liveTab);
                 browser.CoreWebView2.Navigate("https://www.tiktok.com/login");
             }
         };
@@ -279,8 +288,8 @@ internal sealed class BotWindow : Form
             }
             try
             {
-                var connected = await core.ExecuteScriptAsync("Boolean(document.querySelector('[data-e2e=live-chat-container], [data-e2e=chat-room], video'))");
-                if (!IsDisposed && watchedRoom == target && core.Source == source && connected == "false")
+                await core.ExecuteScriptAsync("document.readyState");
+                if (!IsDisposed && watchedRoom == target && core.Source == source && !comments.ChatAvailable)
                     core.Navigate(target);
             }
             catch (InvalidOperationException) { }
@@ -417,7 +426,11 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("okay", "") == null &&
             IsAllowedRoom("https://www.tiktok.com/@Creator/live?share=1", LiveAddress("@creator")) &&
             !IsAllowedRoom("https://www.tiktok.com/@other/live", LiveAddress("@creator")) &&
-            !IsAllowedRoom("https://www.tiktok.com/@creator/live", null);
+            !IsAllowedRoom("https://www.tiktok.com/@creator/live", null) &&
+            !LiveComments.IsPlaybackAdvancing(null, 3) &&
+            !LiveComments.IsPlaybackAdvancing(3, null) &&
+            !LiveComments.IsPlaybackAdvancing(3, 3) &&
+            LiveComments.IsPlaybackAdvancing(3, 5);
     }
 
     private async void CheckAccount(object sender, EventArgs args)

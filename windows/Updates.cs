@@ -96,7 +96,8 @@ internal sealed class Updates : UserControl
             var file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
             File.WriteAllBytes(file, bytes);
             var installedPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-            using (var setup = Process.Start(new ProcessStartInfo(file, "/DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
+            using (var setup = Process.Start(new ProcessStartInfo(file,
+                "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
             FindForm().Close();
         }
         catch (HttpRequestException error) { ReportError("Das Setup konnte nicht geladen werden.", error); }

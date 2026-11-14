@@ -23,6 +23,7 @@ internal sealed class LiveComments : UserControl
     private Func<string, bool> isAllowedRoom;
     private int generation;
     private bool polling;
+    private double? lastPlayback;
     private bool speaking;
     private System.Threading.CancellationTokenSource characterSpeech;
     private int localVoiceCount;
@@ -105,6 +106,7 @@ internal sealed class LiveComments : UserControl
         browser.NavigationStarting += delegate
         {
             SetConnection(false);
+            lastPlayback = null;
             generation++;
             history.Items.Clear();
             StopSpeech();
@@ -202,6 +204,7 @@ internal sealed class LiveComments : UserControl
         if (!isAllowedRoom(browser.Source))
         {
             SetConnection(false);
+            lastPlayback = null;
             status.Text = "Bot wartet auf das gespeicherte LIVE-Konto.";
             return;
         }
@@ -210,6 +213,25 @@ internal sealed class LiveComments : UserControl
         var current = generation;
         try
         {
+            var playbackResult = await browser.ExecuteScriptAsync(@"(() => {
+                const room = document.querySelector('[data-e2e=""live-player""], [data-e2e=""live-player-container""]');
+                const video = room ? (room.matches('video') ? room : room.querySelector('video')) :
+                    Array.from(document.querySelectorAll('video')).find(item => item.duration === Infinity);
+                if (!video || video.paused || video.ended || video.readyState < 2 || !video.videoWidth ||
+                    document.querySelector('[data-e2e=""live-ended""], [data-e2e=""live-offline""]')) return null;
+                return video.currentTime;
+            })()");
+            if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
+            var playback = json.Deserialize<double?>(playbackResult);
+            var progressing = IsPlaybackAdvancing(lastPlayback, playback);
+            lastPlayback = playback;
+            if (!progressing)
+            {
+                SetConnection(false);
+                if (AudienceChanged != null) AudienceChanged(null);
+                status.Text = "Warte auf ein laufendes LIVE-Video.";
+                return;
+            }
             var result = await browser.ExecuteScriptAsync(ReadComments);
             var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
             if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
@@ -240,7 +262,13 @@ internal sealed class LiveComments : UserControl
     {
         if (IsDisposed || current != generation) return;
         SetConnection(false);
+        lastPlayback = null;
         ReportError("LIVE-Chat", message, error);
+    }
+
+    internal static bool IsPlaybackAdvancing(double? previous, double? current)
+    {
+        return previous.HasValue && current.HasValue && current.Value > previous.Value;
     }
 
     private void Speak(string text)

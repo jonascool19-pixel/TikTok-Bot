@@ -80,9 +80,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path $profile | Out-Null
           $marker = Join-Path $profile 'installer-profile-test.txt'
           Set-Content -LiteralPath $marker -Value 'existing local data'
-          Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="{0}"' -f $installed)
+          Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEBOT=1 /TASKS=desktopicon /DIR="{0}"' -f $installed)
           if ((Get-Content -LiteralPath $marker) -ne 'existing local data') { throw 'Setup modified the local profile.' }
           $exe = Join-Path $installed 'TikTok-Bot.exe'
+          $restarted = Get-Process -Name 'TikTok-Bot' -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe
+          if (!$restarted) { throw 'The update did not restart TikTok-Bot.' }
+          foreach ($process in $restarted) {
+            if (!$process.CloseMainWindow() -or !$process.WaitForExit(10000)) {
+              if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
+            }
+          }
           if (!(Test-Path -LiteralPath $shortcut)) { throw 'Desktop shortcut is missing.' }
           $shell = New-Object -ComObject WScript.Shell
           if ($shell.CreateShortcut($shortcut).TargetPath -ine $exe) { throw 'Desktop shortcut target is incorrect.' }
