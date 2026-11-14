@@ -61,6 +61,18 @@ internal sealed class MusicQueue : UserControl
         var query = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "Titel oder Interpret" };
         searchTools.Controls.Add(query);
         AddButton(searchTools, "Auf Spotify suchen", () => Search(query.Text));
+        AddButton(searchTools, "Wunsch hinzufügen", delegate
+        {
+            if (!AddWish(query.Text)) return;
+            query.Clear();
+            query.Focus();
+        });
+        query.KeyDown += (sender, args) =>
+        {
+            if (args.KeyCode != Keys.Enter) return;
+            args.SuppressKeyPress = true;
+            if (AddWish(query.Text)) query.Clear();
+        };
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
         AddButton(searchTools, "Wunsch entfernen", delegate { if (requests.SelectedIndex >= 0) requests.Items.RemoveAt(requests.SelectedIndex); });
         searchTools.Controls.Add(collect);
@@ -102,7 +114,7 @@ internal sealed class MusicQueue : UserControl
         if (!match.Success) return false;
         var title = match.Groups[1].Value.Trim();
         if (title.Length < 2) return true;
-        if (requests.Items.Count < 100 && !requests.Items.Contains(title)) requests.Items.Add(title);
+        AddWish(title, false);
         var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
         if (terms.Length == 0) return true;
         var tracks = library.Where(file => File.Exists(file.FullName) &&
@@ -126,6 +138,33 @@ internal sealed class MusicQueue : UserControl
     }
 
     internal void ResetChoices() { choices.Clear(); prompt.Text = collect.Checked ? Hint : ""; }
+
+    private bool AddWish(string text, bool manual = true)
+    {
+        var title = text.Trim();
+        if (title.Length < 2)
+        {
+            if (manual) spotifyStatus.Text = "Gib einen Titel oder Künstler ein.";
+            return false;
+        }
+        if (requests.Items.Cast<string>().Any(existing => string.Equals(existing, title, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (manual) spotifyStatus.Text = "Dieser Wunsch steht bereits in der Liste.";
+            return false;
+        }
+        if (requests.Items.Count >= 100)
+        {
+            if (manual) spotifyStatus.Text = "Die Wunschliste ist voll.";
+            return false;
+        }
+        var index = requests.Items.Add(title);
+        if (manual)
+        {
+            requests.SelectedIndex = index;
+            spotifyStatus.Text = "Wunsch hinzugefügt.";
+        }
+        return true;
+    }
 
     private void QueueRequest(FileInfo file)
     {
