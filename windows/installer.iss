@@ -20,6 +20,9 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 [Files]
 Source: "build\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
+[InstallDelete]
+Type: files; Name: "{app}\ai\llama-*.exe"
+
 [Tasks]
 Name: "desktopicon"; Description: "Desktop-Symbol erstellen"; Flags: unchecked
 

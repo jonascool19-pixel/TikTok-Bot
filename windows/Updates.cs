@@ -78,11 +78,14 @@ internal sealed class Updates : UserControl
         status.Text = "Download wird vorbereitet …";
         progress.Style = ProgressBarStyle.Marquee;
         progress.Visible = true;
+        string folder = null;
+        string file = null;
+        var setupStarted = false;
         try
         {
-            var folder = Path.Combine(Path.GetTempPath(), "TikTokBot-Update-" + Guid.NewGuid().ToString("N"));
+            folder = Path.Combine(Path.GetTempPath(), "TikTokBot-Update-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
-            var file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
+            file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
             using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(15)))
             using (var response = await Client.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
             {
@@ -106,6 +109,7 @@ internal sealed class Updates : UserControl
                     {
                         await destination.WriteAsync(buffer, 0, read, timeout.Token);
                         received += read;
+                        if (received > total) throw new InvalidDataException();
                         if (IsDisposed) return;
                         if (watch.ElapsedMilliseconds - updatedAt < 250 && received != total) continue;
                         updatedAt = watch.ElapsedMilliseconds;
@@ -120,6 +124,7 @@ internal sealed class Updates : UserControl
                         }
                         else status.Text = "Download: " + (received / 1048576.0).ToString("0.0") + " MiB übertragen.";
                     }
+                    if (received != total) throw new InvalidDataException();
                 }
             }
             status.Text = "Download: 100 % · Prüfsumme wird geprüft …";
@@ -134,17 +139,32 @@ internal sealed class Updates : UserControl
             if (IsDisposed) return;
             var installedPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
             using (var setup = Process.Start(new ProcessStartInfo(file,
-                "/SILENT /SP- /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
+                "/SILENT /SP- /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true }))
+            {
+                if (setup == null) throw new InvalidOperationException("Setup-Prozess fehlt.");
+                setupStarted = true;
+            }
             FindForm().Close();
         }
         catch (HttpRequestException error) { ReportError("Das Setup konnte nicht geladen werden.", error); }
         catch (OperationCanceledException error) { ReportError("Der Download hat zu lange gedauert.", error); }
-        catch (InvalidDataException error) { ReportError("Die Prüfsumme des Setups stimmt nicht.", error); }
+        catch (InvalidDataException error) { ReportError("Der Download ist unvollständig oder die Prüfsumme stimmt nicht.", error); }
         catch (IOException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
         catch (UnauthorizedAccessException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
         catch (System.ComponentModel.Win32Exception error) { ReportError("Das Setup wurde nicht gestartet.", error); }
+        catch (InvalidOperationException error) { ReportError("Das Setup wurde nicht gestartet.", error); }
         finally
         {
+            if (!setupStarted && folder != null)
+            {
+                try
+                {
+                    if (file != null) File.Delete(file);
+                    if (Directory.Exists(folder)) Directory.Delete(folder);
+                }
+                catch (IOException error) { ErrorLog.Write("Updates", "Temporärer Download konnte nicht entfernt werden.", error); }
+                catch (UnauthorizedAccessException error) { ErrorLog.Write("Updates", "Temporärer Download konnte nicht entfernt werden.", error); }
+            }
             if (!IsDisposed)
             {
                 progress.Visible = false;

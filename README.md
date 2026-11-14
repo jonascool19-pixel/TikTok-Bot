@@ -4,7 +4,7 @@ Desktop-App für TikTok LIVE auf Windows x64. Öffne einen LIVE per `@Name` oder
 
 ## Installation und Updates
 
-Entpacke das Windows-Paket aus dem [GitHub-Release](https://github.com/jonascool19-pixel/TikTok-Bot/releases) und starte `TikTok-Bot-Setup.exe`. Das Setup installiert für den aktuellen Benutzer. Du kannst ein Desktop-Symbol hinzufügen. Windows benötigt die Microsoft Edge WebView2 Runtime.
+Lade das [aktuelle Windows-Setup](https://github.com/jonascool19-pixel/TikTok-Bot/releases/latest/download/TikTok-Bot-Setup.exe) herunter und starte die EXE direkt. Das Setup installiert den Bot für den aktuellen Benutzer, auf Wunsch mit Desktop-Symbol. Windows benötigt die Microsoft Edge WebView2 Runtime.
 
 Im Reiter **Updates** sucht die App nach veröffentlichten Windows-Versionen dieses Repositorys, prüft das heruntergeladene Setup per SHA-256 und startet die Installation im bestehenden Ordner. Das TikTok-Profil, das gespeicherte Bot-Konto und das LIVE-Ziel liegen separat unter `%LOCALAPPDATA%\TikTok-Bot\WindowsPrototype`.
 
@@ -17,7 +17,7 @@ Im Reiter **Updates** sucht die App nach veröffentlichten Windows-Versionen die
 
 ## Build
 
-Für freie Antwortvorschläge kannst du unter **Chatantworten** die lokale KI aktivieren. Installiere dazu [Ollama für Windows](https://docs.ollama.com/windows) und lade einmal mit `ollama pull qwen2.5:1.5b` das Modell. Die App verwendet ausschließlich den lokalen Ollama-Endpunkt und berücksichtigt bis zu sechs vorherige unbekannte LIVE-Kommentare im Arbeitsspeicher. Feste Antworten bleiben auch ohne Ollama nutzbar.
+Unter **Chatantworten** kannst du die mitgelieferte lokale KI aktivieren. Das Modell ist im Setup enthalten und berücksichtigt bis zu sechs vorherige LIVE-Kommentare im Arbeitsspeicher.
 
 Der Reiter **Fehlerlog** zeigt lokale Fehler aus TikTok, Chatantworten, Audio, Spotify und Updates. Über **Protokoll kopieren** kannst du die Einträge zur Diagnose weitergeben. Die App protokolliert Fehlerbeschreibung, Zeitpunkt und Fehlercode. Chattexte, Zugangsdaten und vollständige Dateipfade werden dabei nicht aus Ausnahmen übernommen.
 
