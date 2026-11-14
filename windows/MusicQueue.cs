@@ -18,6 +18,11 @@ internal sealed class MusicQueue : UserControl
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
     private readonly ListBox youtubeRequests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "YouTube Music Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
+    private readonly CheckBox spotifyWishes = new CheckBox { Text = "LIVE-Musikwünsche über Spotify einreihen", AutoSize = true };
+    private readonly SpotifyQueueControl spotifyQueueControl;
+    private readonly Queue<KeyValuePair<string, string>> spotifyPending = new Queue<KeyValuePair<string, string>>();
+    private int spotifySession;
+    private bool processingSpotify;
     private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
     private readonly List<FileInfo> library = new List<FileInfo>();
     private readonly Dictionary<string, Choice> choices = new Dictionary<string, Choice>(StringComparer.OrdinalIgnoreCase);
@@ -31,6 +36,7 @@ internal sealed class MusicQueue : UserControl
     internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved)
     {
         this.chatAvailable = chatAvailable;
+        spotifyQueueControl = new SpotifyQueueControl(directory, saved) { Dock = DockStyle.Fill };
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         AddButton(tools, "Dateien hinzufügen", AddFiles);
         AddButton(tools, "Abspielen", delegate { if (!playing) Next(); });
@@ -91,6 +97,7 @@ internal sealed class MusicQueue : UserControl
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
         AddButton(searchTools, "Wunsch entfernen", () => RemoveWish(requests.SelectedItem as string));
         searchTools.Controls.Add(collect);
+        searchTools.Controls.Add(spotifyWishes);
         searchTools.Controls.Add(autoPlay);
         AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
         requests.DoubleClick += delegate { Search(requests.SelectedItem as string); };
@@ -129,7 +136,16 @@ internal sealed class MusicQueue : UserControl
         youtubeRequests.DoubleClick += delegate { SearchYouTubeMusic(youtubeRequests.SelectedItem as string); };
         youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Bottom, Height = 155 }, ytStatus, ytTools });
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
-        spotifyQueue.Controls.Add(new SpotifyQueueControl(directory, saved) { Dock = DockStyle.Fill });
+        spotifyQueue.Controls.Add(spotifyQueueControl);
+        AddButton(searchTools, "Wunsch in Spotify-Warteschlange", async delegate
+        {
+            var title = requests.SelectedItem as string;
+            if (title == null) return;
+            sources.SelectedTab = spotifyQueue;
+            var uri = SpotifyQueueControl.TrackUri(title);
+            if (uri != null) await spotifyQueueControl.Enqueue(uri);
+            else await spotifyQueueControl.ShowSearch(title);
+        });
         var youtube = new TabPage("YouTube");
         var youtubeTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         AddButton(youtubeTools, "YouTube öffnen / anmelden", () => OpenYouTube("https://www.youtube.com/"));
@@ -138,10 +154,10 @@ internal sealed class MusicQueue : UserControl
         Controls.Add(sources);
         collect.CheckedChanged += delegate
         {
-            choices.Clear();
-            prompt.Text = collect.Checked ? Hint : "";
+            ResetChoices();
             reminders.Enabled = collect.Checked;
         };
+        spotifyWishes.CheckedChanged += delegate { ResetChoices(); };
         reminders.Tick += delegate { if (this.chatAvailable() && !choices.Values.Any(c => c.Expires > DateTime.UtcNow)) prompt.Text = Hint; };
     }
 
@@ -149,6 +165,7 @@ internal sealed class MusicQueue : UserControl
     {
         bind("collect-music-requests", collect);
         bind("autoplay-music-requests", autoPlay);
+        bind("spotify-live-wishes", spotifyWishes);
     }
 
     internal bool ConsiderRequest(string handle, string message)
@@ -159,10 +176,11 @@ internal sealed class MusicQueue : UserControl
         if (!string.IsNullOrEmpty(handle) && choices.TryGetValue(handle, out choice) &&
             choice.Expires > DateTime.UtcNow && Regex.IsMatch(message, @"\A[123]\z") && int.TryParse(message, out number))
         {
-            if (number <= choice.Tracks.Length)
+            if (number <= (choice.Spotify != null ? choice.Spotify.Length : choice.Tracks.Length))
             {
                 choices.Remove(handle);
-                QueueRequest(choice.Tracks[number - 1]);
+                if (choice.Spotify != null) QueueSpotify(handle, choice.Spotify[number - 1].Uri);
+                else QueueRequest(choice.Tracks[number - 1]);
             }
             return true;
         }
@@ -170,7 +188,16 @@ internal sealed class MusicQueue : UserControl
         if (!match.Success) return false;
         var title = match.Groups[1].Value.Trim();
         if (title.Length < 2) return true;
-        AddWish(title, false);
+        var added = AddWish(title, false);
+        if (spotifyWishes.Checked)
+        {
+            if (added)
+            {
+                if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
+                QueueSpotify(handle, title);
+            }
+            return true;
+        }
         var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
         if (terms.Length == 0) return true;
         var tracks = library.Where(file => File.Exists(file.FullName) &&
@@ -193,7 +220,60 @@ internal sealed class MusicQueue : UserControl
         return true;
     }
 
-    internal void ResetChoices() { choices.Clear(); prompt.Text = collect.Checked ? Hint : ""; }
+    internal void ResetChoices()
+    {
+        choices.Clear();
+        spotifyPending.Clear();
+        spotifySession++;
+        prompt.Text = collect.Checked ? Hint : "";
+    }
+
+    private async void QueueSpotify(string handle, string title)
+    {
+        if (spotifyPending.Count >= 20) { prompt.Text = "Spotify-Wunschliste ausgelastet. Bitte warte kurz."; return; }
+        spotifyPending.Enqueue(new KeyValuePair<string, string>(handle, title));
+        if (processingSpotify) return;
+        processingSpotify = true;
+        try
+        {
+            while (spotifyPending.Count > 0 && !IsDisposed)
+            {
+                var wish = spotifyPending.Dequeue();
+                var session = spotifySession;
+                var uri = SpotifyQueueControl.TrackUri(wish.Value);
+                if (uri == null)
+                {
+                    var tracks = await spotifyQueueControl.Search(wish.Value);
+                    if (IsDisposed || session != spotifySession || !chatAvailable()) continue;
+                    if (tracks == null) { prompt.Text = "Spotify-Suche fehlgeschlagen. Details stehen im Spotify-Reiter."; continue; }
+                    if (tracks.Length == 0) { prompt.Text = "Kein Spotify-Treffer für „" + wish.Value + "“."; continue; }
+                    if (tracks.Length > 1)
+                    {
+                        var options = tracks.Take(3).ToArray();
+                        if (string.IsNullOrEmpty(wish.Key)) { prompt.Text = "Mehrere Spotify-Treffer. Wähle den Wunsch manuell aus."; continue; }
+                        foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
+                            choices.Remove(expired);
+                        if (choices.Count >= 100) { prompt.Text = "Zu viele offene Musikwünsche."; continue; }
+                        choices[wish.Key] = new Choice { Spotify = options, Expires = DateTime.UtcNow.AddMinutes(3) };
+                        var reply = "@" + wish.Key + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
+                        var max = Math.Max(8, (150 - reply.Length - 6) / options.Length);
+                        prompt.Text = reply + string.Join(" | ", options.Select((item, index) =>
+                        {
+                            var label = (index + 1) + ") " + item;
+                            return label.Length <= max ? label : label.Substring(0, max - 1) + "…";
+                        }));
+                        continue;
+                    }
+                    uri = tracks[0].Uri;
+                }
+                if (!chatAvailable()) continue;
+                var added = await spotifyQueueControl.Enqueue(uri);
+                if (!IsDisposed && session == spotifySession)
+                    prompt.Text = added ? "Titel in die Spotify-Warteschlange aufgenommen." : "Spotify konnte den Wunsch nicht einreihen. Prüfe den Spotify-Reiter.";
+            }
+        }
+        finally { processingSpotify = false; }
+    }
 
     private bool AddWish(string text, bool manual = true, Label feedback = null)
     {
@@ -254,6 +334,7 @@ internal sealed class MusicQueue : UserControl
     private sealed class Choice
     {
         internal FileInfo[] Tracks;
+        internal SpotifyQueueControl.Track[] Spotify;
         internal DateTime Expires;
     }
 
