@@ -115,7 +115,7 @@ internal sealed class BotWindow : Form
             if (!string.IsNullOrEmpty(handle) && string.Equals("@" + handle, botHandle ?? configuredHandle, StringComparison.OrdinalIgnoreCase)) return;
             if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
         };
-        browser.NavigationStarting += delegate { music.ResetChoices(); };
+        browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
         musicTab.Controls.Add(music);
         var updatesTab = new TabPage("Updates");
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
@@ -443,6 +443,8 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
             ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
             ChatReplies.Suggest("okay", "") == null &&
+            ChatReplies.CleanAiReply(" KEINE_ANTWORT. ") == null &&
+            ChatReplies.CleanAiReply(" Klar, gerne! ") == "Klar, gerne!" &&
             IsAllowedRoom("https://www.tiktok.com/@Creator/live?share=1", LiveAddress("@creator")) &&
             !IsAllowedRoom("https://www.tiktok.com/@other/live", LiveAddress("@creator")) &&
             !IsAllowedRoom("https://www.tiktok.com/@creator/live", null) &&

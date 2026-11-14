@@ -61,7 +61,7 @@ internal sealed class MusicQueue : UserControl
         var query = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "Titel oder Interpret" };
         searchTools.Controls.Add(query);
         AddButton(searchTools, "Auf Spotify suchen", () => Search(query.Text));
-        AddButton(searchTools, "Wunsch hinzufügen", delegate
+        AddButton(searchTools, "Wunsch im Bot speichern", delegate
         {
             if (!AddWish(query.Text)) return;
             query.Clear();
@@ -161,7 +161,7 @@ internal sealed class MusicQueue : UserControl
         if (manual)
         {
             requests.SelectedIndex = index;
-            spotifyStatus.Text = "Wunsch hinzugefügt.";
+            spotifyStatus.Text = "Im Bot gespeichert. Öffne den Wunsch und füge den Titel in Spotify zur Warteschlange hinzu.";
         }
         return true;
     }
