@@ -125,6 +125,8 @@ internal sealed class AppTabs : UserControl
         if (selected == null && entries.Length > 0) SelectedTab = entries[0];
     }
 
+    internal event Action SelectionChanged;
+
     internal TabPage SelectedTab
     {
         get { return selected; }
@@ -136,6 +138,7 @@ internal sealed class AppTabs : UserControl
             pages[value].Show();
             pages[value].BringToFront();
             UpdateSelection();
+            if (SelectionChanged != null) SelectionChanged();
         }
     }
 

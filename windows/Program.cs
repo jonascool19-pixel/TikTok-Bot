@@ -10,6 +10,15 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Application.ThreadException += (sender, args) =>
+        {
+            ErrorLog.Write("Windows-App", "Unerwarteter Fehler auf der Oberfläche.", args.Exception);
+            MessageBox.Show("Ein unerwarteter Fehler ist aufgetreten. Details stehen im Fehlerlog.", "TikTok-Bot");
+        };
+        AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+            ErrorLog.Write("Windows-App", "Die App ist unerwartet abgebrochen.", args.ExceptionObject as Exception);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (sender, args) =>
+            ErrorLog.Write("Windows-App", "Eine Hintergrundaufgabe ist fehlgeschlagen.", args.Exception.GetBaseException());
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         using (var window = new BotWindow(args.Length == 1 && args[0] == "--smoke-test"))
@@ -22,7 +31,7 @@ internal static class Program
 
 internal sealed class BotWindow : Form
 {
-    private readonly WebView2 browser = new WebView2 { Dock = DockStyle.Fill };
+    private readonly WebView2 browser = new WebView2();
     private readonly LiveComments comments = new LiveComments { Dock = DockStyle.Fill };
     private readonly TextBox room = new TextBox { Width = 275, AccessibleName = "@Name oder LIVE-Link" };
     private readonly Button open = new Button { Text = "LIVE öffnen", AutoSize = true, Enabled = false };
@@ -171,7 +180,8 @@ internal sealed class BotWindow : Form
         music.WishAdded += title => notify("Musikwunsch: " + title);
         var tabs = new AppTabs();
         var liveTab = new TabPage("TikTok-Webansicht");
-        liveTab.Controls.Add(browser);
+        var webSlot = new Panel { Dock = DockStyle.Fill };
+        liveTab.Controls.Add(webSlot);
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
@@ -271,8 +281,8 @@ internal sealed class BotWindow : Form
                 configured.Text = File.ReadAllText(accountPath).Trim();
                 if (Regex.IsMatch(configured.Text, @"\A@[a-zA-Z0-9_.]{1,64}\z")) configuredHandle = configured.Text;
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (IOException error) { ErrorLog.Write("Bot-Konto", "Bot-Konto konnte nicht geladen werden.", error); }
+            catch (UnauthorizedAccessException error) { ErrorLog.Write("Bot-Konto", "Bot-Konto konnte nicht geladen werden.", error); }
         }
         saveAccount.Click += delegate
         {
@@ -361,10 +371,30 @@ internal sealed class BotWindow : Form
             settingsContent.Controls.Add(panel);
             settingsPanels.Add(page.Text, panel);
         }
+        // Keep the LIVE renderer mounted when another page covers it.
+        Controls.Add(browser);
+        Action layoutBrowser = delegate
+        {
+            if (tabs.SelectedTab == settingsTab && Equals(menu.SelectedItem, liveTab.Text))
+            {
+                browser.Bounds = RectangleToClient(webSlot.RectangleToScreen(webSlot.ClientRectangle));
+                browser.BringToFront();
+            }
+            else
+            {
+                browser.Bounds = tabs.Bounds;
+                browser.SendToBack();
+            }
+        };
+        tabs.SelectionChanged += layoutBrowser;
+        webSlot.SizeChanged += delegate { layoutBrowser(); };
+        tabs.SizeChanged += delegate { layoutBrowser(); };
+        Shown += delegate { layoutBrowser(); };
         menu.SelectedIndexChanged += delegate
         {
             foreach (var entry in settingsPanels)
                 entry.Value.Visible = Equals(entry.Key, menu.SelectedItem);
+            layoutBrowser();
         };
         menu.SelectedIndex = 0;
         Controls.Add(liveOptions);
@@ -433,8 +463,8 @@ internal sealed class BotWindow : Form
                     ? enabled : !File.Exists(preference);
             }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException error) { ErrorLog.Write("LIVE-Prüfung", "LIVE-Einstellungen konnten nicht geladen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("LIVE-Prüfung", "LIVE-Einstellungen konnten nicht geladen werden.", error); }
         monitor.CheckedChanged += delegate
         {
             if (monitor.Checked && watchedRoom == null)
@@ -446,27 +476,15 @@ internal sealed class BotWindow : Form
             SavePreference(Path.Combine(data, "live-monitor.txt"), monitor.Checked.ToString());
             if (monitor.Checked && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(watchedRoom);
         };
-        liveTimer.Tick += async delegate
+        liveTimer.Tick += delegate
         {
             var core = browser.CoreWebView2;
             var target = watchedRoom;
-            if (core == null || target == null || !monitor.Checked) return;
-            var source = core.Source;
-            // Leave login, profile editing and manually opened pages alone.
-            var currentRoom = LiveAddress(source ?? "");
-            if (currentRoom == null) return;
-            if (!string.Equals(currentRoom, target, StringComparison.OrdinalIgnoreCase))
-            {
-                if (!webViewSelected()) core.Navigate(target);
-                return;
-            }
-            try
-            {
-                await core.ExecuteScriptAsync("document.readyState");
-                if (!IsDisposed && watchedRoom == target && core.Source == source && !comments.ChatAvailable)
-                    core.Navigate(target);
-            }
-            catch (InvalidOperationException) { }
+            if (core == null || target == null || !monitor.Checked || comments.ChatAvailable) return;
+            // Leave sign-in and profile editing visible while the user works there.
+            if (webViewSelected() && !IsAllowedRoom(core.Source, target)) return;
+            try { core.Navigate(target); }
+            catch (InvalidOperationException error) { ErrorLog.Write("LIVE-Prüfung", "Das gespeicherte LIVE konnte nicht geöffnet werden.", error); }
         };
     }
 
@@ -579,7 +597,7 @@ internal sealed class BotWindow : Form
                                 ? "TikTok-Profil bestätigt: " + expected
                                 : "TikTok-Profil konnte nicht eindeutig bestätigt werden.";
                         }
-                        catch (InvalidOperationException) { }
+                        catch (InvalidOperationException error) { ErrorLog.Write("TikTok-Profil", "Profil konnte nicht überprüft werden.", error); }
                     }
                 }
                 else
@@ -680,17 +698,39 @@ internal sealed class BotWindow : Form
             var json = new System.Web.Script.Serialization.JavaScriptSerializer();
             var result = await core.ExecuteScriptAsync(@"(() => {
                 if ((location.origin + location.pathname.replace(/\/$/, '')).toLowerCase() !== " + json.Serialize(target.ToLowerInvariant()) + @") return 'room';
-                const room = document.querySelector('[data-e2e=chat-room]');
-                if (!room) return 'missing';
-                const scope = room.parentElement || room;
-                const editor = scope.querySelector('[contenteditable][role=textbox], [contenteditable][data-e2e=chat-input], [data-e2e=chat-input] [contenteditable], [contenteditable=plaintext-only][maxlength=""150""]');
-                const send = scope.querySelector('button[data-e2e=chat-send], button[data-e2e=chat-send-button], button[data-e2e=chat-send-btn], button[aria-label=""Send message""], button[aria-label=""Senden""], button[aria-label=""Send""]');
-                if (!editor || !send || !editor.getClientRects().length || !send.getClientRects().length) return 'missing';
-                if (editor.textContent.trim()) return 'draft';
-                editor.focus();
+                const root = document.querySelector('[data-e2e=live-chat-container], [data-e2e=chat-room]');
+                if (!root) return 'missing-chat';
+                const editorSelector = '[data-e2e=chat-input][contenteditable], [data-e2e=chat-input] [contenteditable], ' +
+                    '[contenteditable][role=textbox], [contenteditable][maxlength=""150""]';
+                const sendSelector = '[data-e2e=chat-send], [data-e2e=chat-send-button], [data-e2e=chat-send-btn], ' +
+                    '[aria-label=""Send message""], [aria-label=""Senden""], [aria-label=""Send""], ' +
+                    '[data-e2e=live-chat-send]';
+                const visible = node => node.getClientRects().length > 0 && getComputedStyle(node).visibility === 'visible';
+                let scope = root;
+                let editor, send;
+                for (let depth = 0; scope && scope !== document.body && depth < 5; depth++, scope = scope.parentElement) {
+                    const editors = Array.from(scope.querySelectorAll(editorSelector)).filter(e => e.isContentEditable && visible(e));
+                    if (editors.length > 1) return 'ambiguous';
+                    if (!editors.length) continue;
+                    editor = editors[0];
+                    const buttons = Array.from(scope.querySelectorAll(sendSelector)).filter(visible);
+                    const candidates = buttons.filter(node => !buttons.some(other => other !== node && node.contains(other)));
+                    if (candidates.length > 1) return 'ambiguous';
+                    if (candidates.length === 1) { send = candidates[0]; break; }
+                    const form = editor.closest(""form"");
+                    if (form && scope.contains(form)) {
+                        const submit = Array.from(form.querySelectorAll(""button[type=submit]"")).filter(visible);
+                        if (submit.length === 1) { send = submit[0]; break; }
+                    }
+                }
+                if (!editor) return 'missing-editor';
+                if (!send) return 'missing-button';
+                if ((editor.innerText || '').replace(/[\u200B\uFEFF]/g, '').trim()) return 'draft';
+                editor.focus({ preventScroll: true });
                 const reply = " + json.Serialize(reply) + @";
-                if (!document.execCommand('insertText', false, reply) || editor.textContent.trim() !== reply) return 'draft';
-                if (send.disabled || send.getAttribute('aria-disabled') === 'true') return 'draft';
+                if (document.activeElement !== editor) return 'focus';
+                if (!document.execCommand('insertText', false, reply) || (editor.innerText || '').trim() !== reply) return 'insert';
+                if (send.disabled || send.getAttribute('aria-disabled') === 'true') return 'disabled';
                 send.click();
                 return 'submitted';
             })()");
@@ -699,8 +739,25 @@ internal sealed class BotWindow : Form
                 nextReplyTime = DateTime.UtcNow.AddSeconds(12);
                 return "Antwort an TikTok übergeben. Die Veröffentlichung siehst du im LIVE-Chat.";
             }
-            if (result == "\"draft\"") return fallback + "Prüfe das TikTok-Chatfeld und sende bei Bedarf manuell.";
-            return fallback + "TikTok-Sendefeld nicht verfügbar. Öffne die TikTok-Webansicht und prüfe den Chat.";
+            switch (result)
+            {
+                case "\"room\"":
+                    return fallback + "Das gespeicherte LIVE ist nicht verbunden.";
+                case "\"draft\"":
+                    return fallback + "Im TikTok-Chatfeld steht bereits ein Entwurf.";
+                case "\"missing-chat\"":
+                case "\"missing-editor\"":
+                case "\"missing-button\"":
+                case "\"ambiguous\"":
+                case "\"focus\"":
+                case "\"insert\"":
+                case "\"disabled\"":
+                    ErrorLog.Write("Chatantworten", "TikTok-Sendeversuch nicht möglich (" + result.Trim('"') + ").");
+                    return fallback + "TikTok-Sendefeld nicht verfügbar. Details stehen im Fehlerlog.";
+                default:
+                    ErrorLog.Write("Chatantworten", "TikTok-Sendeversuch lieferte keinen verwertbaren Status.");
+                    return fallback + "TikTok-Sendeversuch fehlgeschlagen.";
+            }
         }
         catch (InvalidOperationException error)
         {
