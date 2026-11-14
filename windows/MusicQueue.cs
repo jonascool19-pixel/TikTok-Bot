@@ -12,6 +12,8 @@ internal sealed class MusicQueue : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 28, Text = "Keine Wiedergabe" };
     private bool playing;
     private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
+    private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
+    private readonly CheckBox collect = new CheckBox { Text = "!song und !wunsch aus dem LIVE-Chat übernehmen", AutoSize = true };
 
     internal MusicQueue()
     {
@@ -42,7 +44,43 @@ internal sealed class MusicQueue : UserControl
         AddButton(spotify, "Spotify: Wiedergabe / Pause", () => ControlSpotify(spotify, "Toggle"));
         AddButton(spotify, "Vorheriger Titel", () => ControlSpotify(spotify, "Previous"));
         AddButton(spotify, "Nächster Titel", () => ControlSpotify(spotify, "Next"));
-        Controls.AddRange(new Control[] { queue, status, spotify, spotifyStatus, tools });
+        var searchTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        var query = new TextBox { Width = 220, MaxLength = 150, AccessibleName = "Titel oder Interpret" };
+        searchTools.Controls.Add(query);
+        AddButton(searchTools, "Auf Spotify suchen", () => Search(query.Text));
+        AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
+        AddButton(searchTools, "Wunsch entfernen", delegate { if (requests.SelectedIndex >= 0) requests.Items.RemoveAt(requests.SelectedIndex); });
+        searchTools.Controls.Add(collect);
+        requests.DoubleClick += delegate { Search(requests.SelectedItem as string); };
+        var sources = new TabControl { Dock = DockStyle.Fill };
+        var local = new TabPage("Lokale Dateien");
+        local.Controls.AddRange(new Control[] { queue, status, tools });
+        var remote = new TabPage("Spotify und Musikwünsche");
+        remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus });
+        sources.TabPages.AddRange(new[] { local, remote });
+        Controls.Add(sources);
+    }
+
+    internal void ConsiderRequest(string message)
+    {
+        if (!collect.Checked || requests.Items.Count >= 100) return;
+        var match = System.Text.RegularExpressions.Regex.Match(message, @"\A!(?:song|wunsch)\s+(.{2,150})\z",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success) return;
+        var title = match.Groups[1].Value.Trim();
+        if (title.Length >= 2 && !requests.Items.Contains(title)) requests.Items.Add(title);
+    }
+
+    private void Search(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+        try
+        {
+            var url = "https://open.spotify.com/search/" + Uri.EscapeDataString(title.Trim());
+            using (var window = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })) { }
+            spotifyStatus.Text = "Spotify-Suche wurde geöffnet.";
+        }
+        catch (System.ComponentModel.Win32Exception) { spotifyStatus.Text = "Spotify-Suche konnte nicht geöffnet werden."; }
     }
 
     private async void ControlSpotify(Control buttons, string action)

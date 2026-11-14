@@ -94,7 +94,9 @@ internal sealed class BotWindow : Form
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
-        musicTab.Controls.Add(new MusicQueue { Dock = DockStyle.Fill });
+        var music = new MusicQueue { Dock = DockStyle.Fill };
+        comments.CommentReceived += music.ConsiderRequest;
+        musicTab.Controls.Add(music);
         var updatesTab = new TabPage("Updates");
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
         tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab });

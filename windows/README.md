@@ -42,6 +42,12 @@ Die Spotify-Schaltflächen steuern eine aktive Spotify-Desktop-Sitzung über die
 
 Die Stimmprofile **Cartoon · hoch** und **Cartoon · tief** verändern Tonhöhe und Tempo der gewählten Windows-Stimme. Wie stark der Effekt klingt, hängt von der Stimme ab.
 
-**Eric Cartman**, **Peter Griffin** und **Stewie Griffin** sind englische Community-Stimmen von FakeYou. Bei Verwendung wird der gesprochene Text an FakeYou übertragen. Automatisches Vorlesen muss beim Wechsel zu einer Online-Stimme erneut aktiviert werden. Die Verfügbarkeit hängt von der Auslastung des Dienstes ab.
+Das Setup bringt deutsche Piper-Stimmen für die Offline-Sprachausgabe mit. Zur Auswahl stehen Kerstin und Thorsten in fünf Sprechweisen. Die Kommentare werden dafür lokal verarbeitet.
+
+**LIVE automatisch prüfen** speichert das eingegebene LIVE-Ziel und öffnet es beim nächsten Start. Solange dieselbe LIVE-Seite geöffnet ist, prüft die App sie jede Minute und lädt sie erneut, wenn sie keinen Chat oder Videoplayer erkennt.
+
+Unter **Bot-Konto** kannst du dich bei TikTok anmelden, den öffentlichen @Namen speichern und das Verbindungsprotokoll ansehen. Der gespeicherte Name und eine von TikTok bestätigte Anmeldung werden getrennt angezeigt. **Bot-Profil / Spitzname ändern** öffnet das Profil. Wähle dort **Profil bearbeiten**.
+
+Unter **Musik → Spotify und Musikwünsche** kannst du nach Titel oder Interpret suchen. Ist die Übernahme aus dem LIVE-Chat aktiviert, landet etwa `!song Künstler – Titel` in der Wunschliste. Wähle einen Wunsch aus und öffne die zugehörige Spotify-Suche.
 
 Unter **Updates** sucht die App nach manuell veröffentlichten Windows-Releases dieses Repositorys. Ein Release benötigt den Versions-Tag `windows-vX.Y.Z` und die unveränderte `TikTok-Bot-Setup.exe` aus dem geprüften Workflow-Artefakt als Release-Datei. Die App vergleicht den SHA-256-Wert mit den GitHub-Metadaten und startet das Setup im bestehenden Installationsordner. Das lokale TikTok-Profil bleibt erhalten. Temporäre Eingaben und die laufende Musikwarteschlange werden bisher nur im Arbeitsspeicher gehalten.
