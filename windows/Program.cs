@@ -110,26 +110,52 @@ internal sealed class BotWindow : Form
         toolbar.Controls.AddRange(new Control[] { room, editTarget, open, profile, login });
         toolbar.Controls.Add(accountState);
         var notices = new ContextMenuStrip();
-        var bell = new Button { Text = "🔔", Dock = DockStyle.Right, Width = 58, AccessibleName = "Benachrichtigungen" };
+        var bell = new Button { Text = "🔔", Dock = DockStyle.Right, Width = 74, AccessibleName = "Benachrichtigungen" };
+        var messages = new System.Collections.Generic.List<Tuple<string>>();
         var unread = 0;
-        var newestNotice = "";
-        var previousNotice = "";
+        Action refreshBell = delegate
+        {
+            bell.Text = unread == 0 ? "🔔" : "🔔 " + unread;
+            bell.AccessibleName = "Benachrichtigungen, " + unread + " ungelesen";
+            bell.BackColor = SystemInformation.HighContrast ? SystemColors.Control :
+                unread > 0 ? Color.LightGoldenrodYellow : Color.White;
+        };
         Action<string> notify = message =>
         {
-            previousNotice = newestNotice;
-            newestNotice = message;
-            unread = Math.Min(2, unread + 1);
-            bell.Text = "🔔 " + unread;
-            bell.BackColor = Color.LightGoldenrodYellow;
+            if (messages.Count == 100) messages.RemoveAt(0);
+            messages.Add(Tuple.Create(message));
+            unread = Math.Min(messages.Count, unread + 1);
+            refreshBell();
         };
         bell.Click += delegate
         {
-            notices.Items.Clear();
-            notices.Items.Add(string.IsNullOrEmpty(newestNotice) ? "Keine Benachrichtigungen" : newestNotice).Enabled = false;
-            if (!string.IsNullOrEmpty(previousNotice)) notices.Items.Add(previousNotice).Enabled = false;
+            while (notices.Items.Count > 0) notices.Items[0].Dispose();
             unread = 0;
-            bell.Text = "🔔";
-            bell.BackColor = SystemColors.Control;
+            refreshBell();
+            if (messages.Count == 0) notices.Items.Add("Keine Benachrichtigungen").Enabled = false;
+            else
+            {
+                notices.Items.Add("Alle löschen", null, (sender, args) =>
+                {
+                    messages.Clear();
+                    unread = 0;
+                    refreshBell();
+                });
+                notices.Items.Add(new ToolStripSeparator());
+                foreach (var message in messages)
+                {
+                    var entry = new ToolStripMenuItem(message.Item1.Replace("&", "&&"));
+                    entry.DropDownItems.Add("Benachrichtigung löschen", null, (sender, args) =>
+                    {
+                        var index = messages.FindIndex(item => ReferenceEquals(item, message));
+                        if (index < 0) return;
+                        if (index >= messages.Count - unread) unread--;
+                        messages.RemoveAt(index);
+                        refreshBell();
+                    });
+                    notices.Items.Insert(2, entry);
+                }
+            }
             notices.Show(bell, new Point(0, bell.Height));
         };
         var header = new Panel { Dock = DockStyle.Top, Height = 52 };
