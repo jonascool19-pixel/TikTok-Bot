@@ -24,6 +24,7 @@ internal sealed class MusicQueue : UserControl
     private readonly Timer reminders = new Timer { Interval = 900000 };
     private readonly Func<bool> chatAvailable;
     private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
+    internal bool RequestsEnabled { get { return collect.Checked; } }
 
     internal MusicQueue(Func<bool> chatAvailable)
     {

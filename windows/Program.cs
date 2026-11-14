@@ -59,7 +59,8 @@ internal sealed class BotWindow : Form
         MinimumSize = new Size(1000, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
-        var replies = new ChatReplies { Dock = DockStyle.Fill };
+        var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
+        var replies = new ChatReplies(() => music.RequestsEnabled) { Dock = DockStyle.Fill };
         var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
         profile.Click += delegate
         {
@@ -80,11 +81,10 @@ internal sealed class BotWindow : Form
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
-        var music = new MusicQueue(() => comments.ChatAvailable) { Dock = DockStyle.Fill };
         comments.ViewerComment += (handle, message) =>
         {
             if (!string.IsNullOrEmpty(handle) && string.Equals("@" + handle, botHandle ?? configuredHandle, StringComparison.OrdinalIgnoreCase)) return;
-            if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message);
+            if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); };
         musicTab.Controls.Add(music);
@@ -354,6 +354,10 @@ internal sealed class BotWindow : Form
         return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret) &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie heißt das Spiel?", "Minecraft") == "Das Spiel heißt Minecraft." &&
+            ChatReplies.Suggest("Wie kann ich mir ein Lied wünschen?", "", true).Contains("#Musikwunsch") &&
+            ChatReplies.Suggest("Kann ich mir einen Song wünschen?", "", false).Contains("deaktiviert") &&
+            ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
+            ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
             ChatReplies.Suggest("okay", "") == null;
     }
 
