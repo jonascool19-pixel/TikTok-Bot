@@ -17,4 +17,6 @@ Im Reiter **Updates** sucht die App nach veröffentlichten Windows-Versionen die
 
 ## Build
 
+Der Reiter **Fehlerlog** zeigt lokale Fehler aus TikTok, Chatantworten, Audio, Spotify und Updates. Über **Protokoll kopieren** kannst du die Einträge zur Diagnose weitergeben. Die App protokolliert Fehlerbeschreibung, Zeitpunkt und Fehlercode. Chattexte, Zugangsdaten und vollständige Dateipfade werden dabei nicht aus Ausnahmen übernommen.
+
 GitHub Actions baut manuell anhand eines Tags `windows-vX.Y.Z`. Der Lauf prüft Setup, Update über eine bestehende Installation, App-Start, Desktop-Verknüpfung und lokale Sprachausgabe. Einzelheiten stehen im [Workflow](.github/workflows/windows.yml).

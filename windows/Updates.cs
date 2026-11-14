@@ -70,10 +70,10 @@ internal sealed class Updates : UserControl
                 : "Windows-Update " + latest.ToString(3) + " verfügbar.";
             install.Enabled = available != null;
         }
-        catch (HttpRequestException error) { status.Text = "Updatesuche fehlgeschlagen. " + error.Message; }
-        catch (OperationCanceledException) { status.Text = "Die Updatesuche hat zu lange gedauert."; }
-        catch (ArgumentException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }
-        catch (InvalidOperationException) { status.Text = "GitHub hat ungültige Update-Daten geliefert."; }
+        catch (HttpRequestException error) { ReportError("Updatesuche fehlgeschlagen. ", error); }
+        catch (OperationCanceledException error) { ReportError("Die Updatesuche hat zu lange gedauert.", error); }
+        catch (ArgumentException error) { ReportError("GitHub hat ungültige Update-Daten geliefert.", error); }
+        catch (InvalidOperationException error) { ReportError("GitHub hat ungültige Update-Daten geliefert.", error); }
         finally { check.Enabled = true; }
     }
 
@@ -99,13 +99,19 @@ internal sealed class Updates : UserControl
             using (var setup = Process.Start(new ProcessStartInfo(file, "/DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
             FindForm().Close();
         }
-        catch (HttpRequestException) { status.Text = "Das Setup konnte nicht geladen werden."; }
-        catch (OperationCanceledException) { status.Text = "Der Download hat zu lange gedauert."; }
-        catch (InvalidDataException) { status.Text = "Die Prüfsumme des Setups stimmt nicht."; }
-        catch (IOException) { status.Text = "Das Setup konnte nicht gespeichert werden."; }
-        catch (UnauthorizedAccessException) { status.Text = "Das Setup konnte nicht gespeichert werden."; }
-        catch (System.ComponentModel.Win32Exception) { status.Text = "Das Setup wurde nicht gestartet."; }
+        catch (HttpRequestException error) { ReportError("Das Setup konnte nicht geladen werden.", error); }
+        catch (OperationCanceledException error) { ReportError("Der Download hat zu lange gedauert.", error); }
+        catch (InvalidDataException error) { ReportError("Die Prüfsumme des Setups stimmt nicht.", error); }
+        catch (IOException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
+        catch (UnauthorizedAccessException error) { ReportError("Das Setup konnte nicht gespeichert werden.", error); }
+        catch (System.ComponentModel.Win32Exception error) { ReportError("Das Setup wurde nicht gestartet.", error); }
         finally { if (!IsDisposed) check.Enabled = install.Enabled = true; }
+    }
+
+    private void ReportError(string message, Exception error)
+    {
+        status.Text = message;
+        ErrorLog.Write("Updates", message, error);
     }
 
     private sealed class Release

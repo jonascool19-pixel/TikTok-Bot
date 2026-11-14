@@ -87,11 +87,11 @@ internal sealed class ChatReplies : Form
             var result = await Generate(url, model.Text.Trim(), apiKey.Text.Trim(), game.Text.Trim(), message.Text.Trim(), lifetime.Token);
             if (!IsDisposed) answer.Text = result ?? "Für diese Nachricht wurde keine Antwort vorgeschlagen.";
         }
-        catch (HttpRequestException) { ShowEndpointError(); }
-        catch (OperationCanceledException) { ShowEndpointError(); }
-        catch (ArgumentException) { ShowEndpointError(); }
-        catch (InvalidOperationException) { ShowEndpointError(); }
-        catch (FormatException) { ShowEndpointError(); }
+        catch (HttpRequestException error) { ShowEndpointError(error); }
+        catch (OperationCanceledException error) { ShowEndpointError(error); }
+        catch (ArgumentException error) { ShowEndpointError(error); }
+        catch (InvalidOperationException error) { ShowEndpointError(error); }
+        catch (FormatException error) { ShowEndpointError(error); }
         finally
         {
             if (!IsDisposed) generate.Enabled = true;
@@ -107,9 +107,11 @@ internal sealed class ChatReplies : Form
         Preview(this, EventArgs.Empty);
     }
 
-    private void ShowEndpointError()
+    private void ShowEndpointError(Exception error)
     {
-        if (!IsDisposed) answer.Text = "Der KI-Endpunkt hat keine verwertbare Antwort geliefert. Prüfe URL, Modell und Zugangsdaten.";
+        if (IsDisposed || Disposing) return;
+        ErrorLog.Write("Chatantworten", "Der KI-Endpunkt hat keine verwertbare Antwort geliefert.", error);
+        answer.Text = "Der KI-Endpunkt hat keine verwertbare Antwort geliefert. Prüfe URL, Modell und Zugangsdaten.";
     }
 
     internal static async Task<string> Generate(Uri url, string model, string key, string game, string message, CancellationToken token)

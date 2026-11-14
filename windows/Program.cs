@@ -49,6 +49,7 @@ internal sealed class BotWindow : Form
         ExitCode = smokeTest ? 1 : 0;
         data = smokeTest ? Path.Combine(Path.GetTempPath(), "TikTokBot-Smoke-" + Guid.NewGuid()) :
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TikTok-Bot", "WindowsPrototype");
+        ErrorLog.Configure(data);
         browser.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = Path.Combine(data, "BotProfile") };
         Text = "TikTok-Bot";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -102,7 +103,9 @@ internal sealed class BotWindow : Form
         musicTab.Controls.Add(music);
         var updatesTab = new TabPage("Updates");
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
-        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab });
+        var errorTab = new TabPage("Fehlerlog");
+        errorTab.Controls.Add(new ErrorLogView { Dock = DockStyle.Fill });
+        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab, errorTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var nickname = new Button { Text = "Bot-Profil / Spitzname ändern", AutoSize = true };
@@ -161,19 +164,7 @@ internal sealed class BotWindow : Form
             catch (UnauthorizedAccessException error) { Report("Bot-Konto konnte nicht gespeichert werden.", error.GetType().Name); }
         };
         var diagnostics = new Button { Text = "Fehlerprotokoll anzeigen", AutoSize = true };
-        diagnostics.Click += delegate
-        {
-            using (var dialog = new Form { Text = "Fehlerprotokoll", Width = 800, Height = 430, StartPosition = FormStartPosition.CenterParent })
-            {
-                var log = Path.Combine(data, "connection.log");
-                var content = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical };
-                try { content.Text = File.Exists(log) ? File.ReadAllText(log) : "Keine Fehler protokolliert."; }
-                catch (IOException) { content.Text = "Fehlerprotokoll nicht verfügbar."; }
-                catch (UnauthorizedAccessException) { content.Text = "Fehlerprotokoll nicht verfügbar."; }
-                dialog.Controls.Add(content);
-                dialog.ShowDialog(this);
-            }
-        };
+        diagnostics.Click += delegate { tabs.SelectedTab = errorTab; };
         accountTools.Controls.AddRange(new Control[] { signIn, new Label { Text = "Öffentlicher @Name des Bot-Kontos", AutoSize = true }, configured, saveAccount, accountHelp, diagnostics });
         accountTab.Controls.Add(accountTools);
         tabs.TabPages.Insert(1, accountTab);
@@ -284,7 +275,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("@creator") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
-                            await LiveComments.VerifyReader(core))
+                            await LiveComments.VerifyReader(core) && VerifyErrorLog())
                             ExitCode = 0;
                     }
                     finally { Close(); }
@@ -338,6 +329,14 @@ internal sealed class BotWindow : Form
             Report("WebView2 konnte nicht gestartet werden. Prüfe die installierte WebView2 Runtime.", error.GetType().Name);
             if (smokeTest) Close();
         }
+    }
+
+    private static bool VerifyErrorLog()
+    {
+        const string secret = "chat-key-must-not-appear";
+        ErrorLog.Write("Starttest", "Absichtlicher Testfehler.", new IOException(secret));
+        var entries = ErrorLog.Read();
+        return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret);
     }
 
     private async void CheckAccount(object sender, EventArgs args)
@@ -403,8 +402,6 @@ internal sealed class BotWindow : Form
 
     private void WriteLog(string message, string details)
     {
-        try { File.AppendAllText(Path.Combine(data, "connection.log"), DateTime.UtcNow.ToString("O") + " " + message + " " + details + Environment.NewLine); }
-        catch (IOException) { status.Text += " Das Fehlerprotokoll ist nicht verfügbar."; }
-        catch (UnauthorizedAccessException) { status.Text += " Das Fehlerprotokoll ist nicht verfügbar."; }
+        ErrorLog.Write("TikTok / Verbindung", message + " " + details);
     }
 }

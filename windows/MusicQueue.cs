@@ -43,11 +43,12 @@ internal sealed class MusicQueue : UserControl
         player.Volume = (double)volume.Value / 100;
         volume.ValueChanged += delegate { player.Volume = (double)volume.Value / 100; };
         player.MediaEnded += delegate { if (playing) Next(); };
-        player.MediaFailed += delegate
+        player.MediaFailed += (sender, error) =>
         {
             if (!playing) return;
             Stop();
             status.Text = "Datei konnte nicht abgespielt werden. Wähle Abspielen für den nächsten Titel.";
+            ErrorLog.Write("Musik", "Lokale Datei konnte nicht abgespielt werden.", error.ErrorException);
         };
         queue.DisplayMember = "Name";
         var spotify = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(6) };
@@ -146,7 +147,11 @@ internal sealed class MusicQueue : UserControl
             using (var window = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })) { }
             spotifyStatus.Text = "Spotify-Suche wurde geöffnet.";
         }
-        catch (System.ComponentModel.Win32Exception) { spotifyStatus.Text = "Spotify-Suche konnte nicht geöffnet werden."; }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            spotifyStatus.Text = "Spotify-Suche konnte nicht geöffnet werden.";
+            ErrorLog.Write("Spotify", spotifyStatus.Text, error);
+        }
     }
 
     private async void ControlSpotify(Control buttons, string action)
@@ -177,8 +182,13 @@ internal sealed class MusicQueue : UserControl
                 case 3: spotifyStatus.Text = "Spotify unterstützt diesen Befehl für den aktuellen Titel nicht."; break;
                 default: spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar."; break;
             }
+            if (result != 0) ErrorLog.Write("Spotify", spotifyStatus.Text + " (Status " + result + ")");
         }
-        catch (System.ComponentModel.Win32Exception) { if (!IsDisposed) spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar."; }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            if (!IsDisposed) spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar.";
+            ErrorLog.Write("Spotify", "Windows-Mediensteuerung konnte nicht gestartet werden.", error);
+        }
         finally { if (!IsDisposed) buttons.Enabled = true; }
     }
 
@@ -212,6 +222,7 @@ internal sealed class MusicQueue : UserControl
         if (!track.Exists)
         {
             status.Text = "Datei nicht gefunden: " + track.Name;
+            ErrorLog.Write("Musik", "Lokale Audiodatei wurde nicht gefunden.");
             return;
         }
         player.Open(new Uri(track.FullName));

@@ -144,8 +144,8 @@ internal sealed class LiveComments : UserControl
                 if (onViewer != null) onViewer(comment.Handle, comment.Text);
             }
         }
-        catch (InvalidOperationException) { if (!IsDisposed) status.Text = "LIVE-Chat vorübergehend nicht verfügbar."; }
-        catch (ArgumentException) { if (!IsDisposed) status.Text = "LIVE-Chat konnte nicht gelesen werden."; }
+        catch (InvalidOperationException error) { if (!IsDisposed) ReportError("LIVE-Chat", "LIVE-Chat vorübergehend nicht verfügbar.", error); }
+        catch (ArgumentException error) { if (!IsDisposed) ReportError("LIVE-Chat", "LIVE-Chat konnte nicht gelesen werden.", error); }
         finally { polling = false; }
     }
 
@@ -171,7 +171,7 @@ internal sealed class LiveComments : UserControl
             catch (OperationCanceledException) { }
             catch (Exception error)
             {
-                if (!IsDisposed && !cancellation.IsCancellationRequested) status.Text = "Lokale Stimme nicht verfügbar (" + error.GetType().Name + ").";
+                if (!IsDisposed && !cancellation.IsCancellationRequested) ReportError("Audio", "Lokale Stimme nicht verfügbar.", error);
             }
             finally
             {
@@ -197,8 +197,14 @@ internal sealed class LiveComments : UserControl
             }
             speaking = true;
         }
-        catch (InvalidOperationException) { status.Text = "Sprachausgabe nicht verfügbar."; }
-        catch (ArgumentException) { status.Text = "Die ausgewählte Stimme ist nicht verfügbar."; }
+        catch (InvalidOperationException error) { ReportError("Audio", "Sprachausgabe nicht verfügbar.", error); }
+        catch (ArgumentException error) { ReportError("Audio", "Die ausgewählte Stimme ist nicht verfügbar.", error); }
+    }
+
+    private void ReportError(string area, string message, Exception error)
+    {
+        status.Text = message;
+        ErrorLog.Write(area, message, error);
     }
 
     private void StopSpeech()
