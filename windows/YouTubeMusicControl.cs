@@ -1,3 +1,6 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System;
 using System.IO;
 using System.Net.Http;
@@ -39,6 +42,76 @@ internal sealed class YouTubeMusicControl : UserControl
             return false;
         }
         finally { busy = false; }
+    }
+
+    internal async Task<MusicMatch[]> Search(string query)
+    {
+        if (busy || token == null) return null;
+        busy = true;
+        try
+        {
+            using (var request = new HttpRequestMessage(HttpMethod.Post, Root + "api/v1/search"))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                request.Content = new StringContent(new JavaScriptSerializer().Serialize(new { query }), Encoding.UTF8, "application/json");
+                using (var response = await Client.SendAsync(request))
+                {
+                    response.EnsureSuccessStatusCode();
+                    return ParseSearch(await response.Content.ReadAsStringAsync());
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            ErrorLog.Write("YouTube Music", "LIVE-Suche über Pear Desktop fehlgeschlagen.", error);
+            return null;
+        }
+        finally { busy = false; }
+    }
+
+    internal static MusicMatch[] ParseSearch(string json)
+    {
+        var serializer = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 };
+        return FindTracks(serializer.DeserializeObject(json)).GroupBy(track => track.Id)
+            .Select(group => group.First()).Take(3).ToArray();
+    }
+
+    private static IEnumerable<MusicMatch> FindTracks(object node)
+    {
+        var map = node as IDictionary<string, object>;
+        if (map != null)
+        {
+            foreach (var pair in map)
+            {
+                if (pair.Key == "musicResponsiveListItemRenderer")
+                {
+                    var row = pair.Value as IDictionary<string, object>;
+                    var id = Field(Field(row, "playlistItemData") as IDictionary<string, object>, "videoId") as string;
+                    var columns = Field(row, "flexColumns") as object[];
+                    if (id == null || VideoId(id) != id || columns == null || columns.Length == 0) continue;
+                    var column = columns[0] as IDictionary<string, object>;
+                    var renderer = Field(column, "musicResponsiveListItemFlexColumnRenderer") as IDictionary<string, object>;
+                    var runs = Field(Field(renderer, "text") as IDictionary<string, object>, "runs") as object[];
+                    if (runs == null) continue;
+                    var title = string.Concat(runs.Select(run => Field(run as IDictionary<string, object>, "text") as string)).Trim();
+                    if (title.Length > 0) yield return new MusicMatch(id, title);
+                }
+                else foreach (var track in FindTracks(pair.Value)) yield return track;
+            }
+        }
+        else
+        {
+            var items = node as IList;
+            if (items != null)
+                foreach (var item in items)
+                    foreach (var track in FindTracks(item)) yield return track;
+        }
+    }
+
+    private static object Field(IDictionary<string, object> map, string key)
+    {
+        object value;
+        return map != null && map.TryGetValue(key, out value) ? value : null;
     }
 
     internal YouTubeMusicControl(string directory, Action<bool> saved)

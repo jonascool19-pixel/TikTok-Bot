@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Web.Script.Serialization;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -7,6 +9,7 @@ using Microsoft.Web.WebView2.WinForms;
 internal sealed class YouTubeQueue : UserControl
 {
     private readonly WebView2 search = new WebView2 { Dock = DockStyle.Fill };
+    private readonly WebView2 liveSearch = new WebView2 { Width = 320, Height = 240, Visible = false };
     private readonly WebView2 player = new WebView2 { Dock = DockStyle.Fill };
     private readonly ListBox wishes = new ListBox { Width = 230, Height = 82, AccessibleName = "Offene YouTube-Wünsche" };
     private readonly ListBox queue = new ListBox { Width = 230, Height = 82, AccessibleName = "YouTube-Warteschlange" };
@@ -31,6 +34,8 @@ internal sealed class YouTubeQueue : UserControl
         {
             if (search.CoreWebView2 != null) search.CoreWebView2.IsMuted = true;
         };
+        liveSearch.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = profile };
+        Controls.Add(liveSearch);
         search.VisibleChanged += delegate
         {
             if (search.Visible && search.Source == null) Navigate(search, "https://www.youtube.com/");
@@ -59,7 +64,6 @@ internal sealed class YouTubeQueue : UserControl
         Button(upcoming, "Auswahl entfernen", () => { if (queue.SelectedIndex >= 0) queue.Items.RemoveAt(queue.SelectedIndex); });
         lists.Controls.Add(pending);
         lists.Controls.Add(upcoming);
-        var results = new TabPage("Suche");
         results.Controls.Add(search);
         playback.Controls.Add(player);
         views.AddPages(results, playback);
@@ -96,6 +100,50 @@ internal sealed class YouTubeQueue : UserControl
             FindWish();
         }
         return "YouTube-Wunsch gespeichert. Öffne den passenden Treffer und klicke auf Offenes Video hinzufügen.";
+    }
+
+    internal async Task<MusicMatch[]> SearchLive(string query)
+    {
+        try
+        {
+            var expected = new Uri("https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query));
+            await liveSearch.EnsureCoreWebView2Async();
+            if (IsDisposed) return null;
+            liveSearch.CoreWebView2.IsMuted = true;
+            liveSearch.Source = expected;
+            for (var attempt = 0; attempt < 24; attempt++)
+            {
+                await Task.Delay(500);
+                if (IsDisposed) return null;
+                var source = liveSearch.Source;
+                if (source == null || source.Host != expected.Host || source.AbsolutePath != expected.AbsolutePath ||
+                    Uri.UnescapeDataString(source.Query) != Uri.UnescapeDataString(expected.Query)) continue;
+                var result = await liveSearch.CoreWebView2.ExecuteScriptAsync(@"(() => {
+                    if (location.origin !== 'https://www.youtube.com' || location.pathname !== '/results' ||
+                        new URLSearchParams(location.search).get('search_query') !== " +
+                        new JavaScriptSerializer().Serialize(query) + @") return null;
+                    return Array.from(document.querySelectorAll('ytd-video-renderer a#video-title[href^=""/watch?v=""]'))
+                        .slice(0, 12).map(a => ({ Link: a.href, Title: a.textContent.trim() }));
+                })()");
+                var rows = new JavaScriptSerializer().Deserialize<SearchRow[]>(result);
+                if (rows == null || rows.Length == 0) continue;
+                var tracks = rows.Where(row => !string.IsNullOrWhiteSpace(row.Link) && !string.IsNullOrWhiteSpace(row.Title))
+                    .Select(row => new MusicMatch(YouTubeMusicControl.VideoId(row.Link), row.Title))
+                    .Where(row => row.Id != null).GroupBy(row => row.Id).Select(group => group.First()).Take(3).ToArray();
+                if (tracks.Length > 0) return tracks;
+            }
+        }
+        catch (Exception error)
+        {
+            if (!IsDisposed) ErrorLog.Write("YouTube", "LIVE-Suche fehlgeschlagen.", error);
+        }
+        return null;
+    }
+
+    private sealed class SearchRow
+    {
+        public string Link { get; set; }
+        public string Title { get; set; }
     }
 
     private void FindWish()

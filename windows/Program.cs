@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Drawing;
 using System.IO;
@@ -644,6 +645,7 @@ internal sealed class BotWindow : Form
             ChatReplies.Suggest("Wo sehe ich meine Anfrage?", "") == null &&
             ChatReplies.GiftThanks("Alex", "Rose", 2) == "Danke, Alex, für 2 × Rose!" &&
             ChatReplies.Suggest("okay", "") == null &&
+            YouTubeMusicControl.ParseSearch(@"{""contents"":[{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Test""}]}}}]}},{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Duplikat""}]}}}]}}]}").Select(track => track.Title).Single() == "Test" &&
             SpotifyQueueControl.ParseTracks("{\"tracks\":{\"items\":[{\"uri\":\"spotify:track:1234567890123456789012\",\"name\":\"Test\"},{\"uri\":\"spotify:track:1234567890123456789012\",\"name\":\"Duplikat\"},{\"uri\":\"spotify:track:1234567890123456789013\",\"name\":\"Gesperrt\",\"is_playable\":false}]}}").Length == 1 &&
             ChatReplies.CleanAiReply(" KEINE_ANTWORT. ") == null &&
             ChatReplies.CleanAiReply(" Klar, gerne! ") == "Klar, gerne!" &&

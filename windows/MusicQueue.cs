@@ -22,9 +22,9 @@ internal sealed class MusicQueue : UserControl
     private readonly YouTubeMusicControl pear;
     private readonly YouTubeQueue youtube;
     private readonly SpotifyQueueControl spotifyQueueControl;
-    private readonly Queue<KeyValuePair<string, string>> spotifyPending = new Queue<KeyValuePair<string, string>>();
-    private int spotifySession;
-    private bool processingSpotify;
+    private readonly Queue<RemoteWish> remotePending = new Queue<RemoteWish>();
+    private int wishSession;
+    private bool processingRemote;
     private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
     private readonly List<FileInfo> library = new List<FileInfo>();
     private readonly Dictionary<string, Choice> choices = new Dictionary<string, Choice>(StringComparer.OrdinalIgnoreCase);
@@ -201,10 +201,10 @@ internal sealed class MusicQueue : UserControl
         if (!string.IsNullOrEmpty(handle) && choices.TryGetValue(handle, out choice) &&
             choice.Expires > DateTime.UtcNow && Regex.IsMatch(message, @"\A[123]\z") && int.TryParse(message, out number))
         {
-            if (number <= (choice.Spotify != null ? choice.Spotify.Length : choice.Tracks.Length))
+            if (number <= (choice.Remote != null ? choice.Remote.Length : choice.Tracks.Length))
             {
                 choices.Remove(handle);
-                if (choice.Spotify != null) QueueSpotify(handle, choice.Spotify[number - 1].Uri);
+                if (choice.Remote != null) QueueRemote(handle, choice.Remote[number - 1].Id, choice.Remote[number - 1]);
                 else QueueRequest(choice.Tracks[number - 1]);
             }
             return true;
@@ -215,15 +215,10 @@ internal sealed class MusicQueue : UserControl
         if (title.Length < 2) return true;
         if (AddWish(title, false) == false && requests.Items.Count >= 100) return true;
         var source = wishSource.SelectedItem as string;
-        if (source == "YouTube" || source == "YouTube Music")
-        {
-            HandleYouTubeWish(title, source == "YouTube Music");
-            return true;
-        }
-        if (source == "Spotify")
+        if (source != "Lokale Dateien")
         {
             if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
-            QueueSpotify(handle, title);
+            QueueRemote(handle, title);
             return true;
         }
         var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
@@ -248,81 +243,96 @@ internal sealed class MusicQueue : UserControl
         return true;
     }
 
-    private async void HandleYouTubeWish(string title, bool music)
-    {
-        var id = title.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeMusicControl.VideoId(title) : null;
-        var session = spotifySession;
-        if (music)
-        {
-            if (id == null) { prompt.Text = "YouTube-Music-Wunsch gespeichert. Suche ihn im Reiter YouTube Music."; return; }
-            var queued = await pear.QueueLiveWish(id);
-            if (!IsDisposed && session == spotifySession)
-                prompt.Text = queued ? "Titel in YouTube Music eingereiht." : "YouTube-Music-Wunsch gespeichert. Prüfe die Pear-Desktop-Verbindung.";
-            return;
-        }
-        prompt.Text = youtube.AddLiveWish(title, id);
-    }
-
     internal void ResetChoices()
     {
         choices.Clear();
-        spotifyPending.Clear();
-        spotifySession++;
+        remotePending.Clear();
+        wishSession++;
         prompt.Text = collect.Checked ? Hint : "";
     }
 
-    private async void QueueSpotify(string handle, string title)
+    private sealed class RemoteWish
     {
-        if (spotifyPending.Count >= 20) { prompt.Text = "Spotify-Wunschliste ausgelastet. Bitte warte kurz."; return; }
-        spotifyPending.Enqueue(new KeyValuePair<string, string>(handle, title));
-        if (processingSpotify) return;
-        processingSpotify = true;
+        internal string Source, Handle, Query;
+        internal MusicMatch Selected;
+    }
+
+    private async void QueueRemote(string handle, string query, MusicMatch selected = null)
+    {
+        if (remotePending.Count >= 20) { prompt.Text = "Musikwunschliste ausgelastet. Bitte warte kurz."; return; }
+        remotePending.Enqueue(new RemoteWish { Source = (string)wishSource.SelectedItem, Handle = handle, Query = query, Selected = selected });
+        if (processingRemote) return;
+        processingRemote = true;
         try
         {
-            while (spotifyPending.Count > 0 && !IsDisposed)
+            while (remotePending.Count > 0 && !IsDisposed)
             {
-                var wish = spotifyPending.Dequeue();
-                var session = spotifySession;
-                var uri = SpotifyQueueControl.TrackUri(wish.Value);
-                if (uri == null)
+                var wish = remotePending.Dequeue();
+                var session = wishSession;
+                if (!chatAvailable()) continue;
+                var source = wish.Source;
+                var id = wish.Selected == null
+                    ? (source == "Spotify" ? SpotifyQueueControl.TrackUri(wish.Query) :
+                        wish.Query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeMusicControl.VideoId(wish.Query) : null)
+                    : wish.Selected.Id;
+                if (id == null)
                 {
-                    var tracks = await spotifyQueueControl.Search(wish.Value);
-                    if (IsDisposed || session != spotifySession || !chatAvailable()) continue;
-                    if (tracks == null) { prompt.Text = "Spotify-Suche fehlgeschlagen. Details stehen im Spotify-Reiter."; continue; }
-                    if (tracks.Length == 0) { prompt.Text = "Kein Spotify-Treffer für „" + wish.Value + "“."; continue; }
-                    if (tracks.Length > 1)
+                    MusicMatch[] tracks;
+                    if (source == "Spotify")
                     {
-                        var options = tracks.Take(3).ToArray();
-                        if (string.IsNullOrEmpty(wish.Key)) { prompt.Text = "Mehrere Spotify-Treffer. Wähle den Wunsch manuell aus."; continue; }
-                        foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
-                            choices.Remove(expired);
-                        if (choices.Count >= 100) { prompt.Text = "Zu viele offene Musikwünsche."; continue; }
-                        choices[wish.Key] = new Choice { Spotify = options, Expires = DateTime.UtcNow.AddMinutes(3) };
-                        var reply = "@" + wish.Key + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
-                        var max = Math.Max(8, (150 - reply.Length - 6) / options.Length);
-                        prompt.Text = reply + string.Join(" | ", options.Select((item, index) =>
-                        {
-                            var label = (index + 1) + ") " + item;
-                            return label.Length <= max ? label : label.Substring(0, max - 1) + "…";
-                        }));
-                        if (SendChoice != null)
-                        {
-                            var question = prompt.Text;
-                            var delivery = await SendChoice(question);
-                            if (!IsDisposed && session == spotifySession && prompt.Text == question && delivery != null)
-                                spotifyStatus.Text = delivery;
-                        }
+                        var matches = await spotifyQueueControl.Search(wish.Query);
+                        tracks = matches == null ? null : matches.Take(3).Select(track => new MusicMatch(track.Uri, track.ToString())).ToArray();
+                    }
+                    else if (source == "YouTube Music") tracks = await pear.Search(wish.Query);
+                    else tracks = await youtube.SearchLive(wish.Query);
+                    if (!WishIsCurrent(session)) continue;
+                    if (tracks == null || tracks.Length == 0)
+                    {
+                        prompt.Text = tracks == null ? source + "-Suche derzeit nicht verfügbar." : "Keine Treffer auf " + source + ".";
+                        if (source == "YouTube") prompt.Text += " " + youtube.AddLiveWish(wish.Query, null);
                         continue;
                     }
-                    uri = tracks[0].Uri;
+                    if (tracks.Length > 1)
+                    {
+                        await OfferChoice(wish.Handle, tracks, session);
+                        continue;
+                    }
+                    id = tracks[0].Id;
                 }
-                if (!chatAvailable()) continue;
-                var added = await spotifyQueueControl.Enqueue(uri);
-                if (!IsDisposed && session == spotifySession)
-                    prompt.Text = added ? "Titel in die Spotify-Warteschlange aufgenommen." : "Spotify konnte den Wunsch nicht einreihen. Prüfe den Spotify-Reiter.";
+                if (!WishIsCurrent(session)) continue;
+                if (source == "YouTube") { prompt.Text = youtube.AddLiveWish(wish.Query, id); continue; }
+                var added = source == "Spotify" ? await spotifyQueueControl.Enqueue(id) : await pear.QueueLiveWish(id);
+                if (WishIsCurrent(session))
+                    prompt.Text = added ? "Titel in die Warteschlange von " + source + " aufgenommen."
+                        : "Titel konnte nicht eingereiht werden. Prüfe die Verbindung zu " + source + ".";
             }
         }
-        finally { processingSpotify = false; }
+        finally { processingRemote = false; }
+    }
+
+    private bool WishIsCurrent(int session)
+    {
+        return !IsDisposed && session == wishSession && chatAvailable();
+    }
+
+    private async Task OfferChoice(string handle, MusicMatch[] options, int session)
+    {
+        if (string.IsNullOrEmpty(handle)) { prompt.Text = "Mehrere Treffer. Der Zuschauer konnte nicht zugeordnet werden."; return; }
+        foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
+            choices.Remove(expired);
+        if (choices.Count >= 100 && !choices.ContainsKey(handle)) { prompt.Text = "Zu viele offene Musikwünsche."; return; }
+        choices[handle] = new Choice { Remote = options, Expires = DateTime.UtcNow.AddMinutes(3) };
+        var reply = "@" + handle + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
+        var max = (150 - reply.Length - (options.Length - 1) * 3) / options.Length;
+        var question = reply + string.Join(" | ", options.Select((item, index) =>
+        {
+            var label = (index + 1) + ") " + item.Title;
+            return label.Length <= max ? label : label.Substring(0, max - (char.IsHighSurrogate(label[max - 2]) ? 2 : 1)) + "…";
+        }));
+        prompt.Text = question;
+        if (SendChoice == null) return;
+        var delivery = await SendChoice(question);
+        if (WishIsCurrent(session) && prompt.Text == question && delivery != null) spotifyStatus.Text = delivery;
     }
 
     private bool AddWish(string text, bool manual = true, Label feedback = null)
@@ -384,7 +394,7 @@ internal sealed class MusicQueue : UserControl
     private sealed class Choice
     {
         internal FileInfo[] Tracks;
-        internal SpotifyQueueControl.Track[] Spotify;
+        internal MusicMatch[] Remote;
         internal DateTime Expires;
     }
 
