@@ -57,6 +57,18 @@ internal static class ErrorLog
             catch (UnauthorizedAccessException) { return "Der Zugriff auf das Fehlerprotokoll fehlt."; }
         }
     }
+
+    internal static void Clear()
+    {
+        lock (Sync)
+        {
+            if (path == null || !Directory.Exists(Path.GetDirectoryName(path))) return;
+            File.Delete(path + ".1");
+            File.Delete(path);
+            lastEntry = null;
+            writeFailed = false;
+        }
+    }
 }
 
 internal sealed class ErrorLogView : UserControl
@@ -90,7 +102,17 @@ internal sealed class ErrorLogView : UserControl
         timer.Tick += delegate { load(); };
         VisibleChanged += delegate { timer.Enabled = Visible; if (Visible) load(); };
         Disposed += delegate { timer.Dispose(); };
-        tools.Controls.AddRange(new Control[] { refresh, copy });
+        var clear = new Button { Text = "Fehlerlog löschen", AutoSize = true };
+        clear.Click += delegate
+        {
+            if (MessageBox.Show(this, "Das gesamte Fehlerprotokoll löschen?", "Fehlerlog",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            try { ErrorLog.Clear(); }
+            catch (IOException) { MessageBox.Show(this, "Das Fehlerprotokoll konnte nicht vollständig gelöscht werden."); }
+            catch (UnauthorizedAccessException) { MessageBox.Show(this, "Der Zugriff zum Löschen des Fehlerprotokolls fehlt."); }
+            load();
+        };
+        tools.Controls.AddRange(new Control[] { refresh, copy, clear });
         Controls.AddRange(new Control[] { entries, tools });
         load();
     }

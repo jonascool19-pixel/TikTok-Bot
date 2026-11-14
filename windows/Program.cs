@@ -104,6 +104,33 @@ internal sealed class BotWindow : Form
         open.EnabledChanged += delegate { profile.Enabled = open.Enabled; };
         toolbar.Controls.AddRange(new Control[] { room, editTarget, open, profile, login });
         toolbar.Controls.Add(accountState);
+        var notices = new ContextMenuStrip();
+        var bell = new Button { Text = "🔔", Dock = DockStyle.Right, Width = 58, AccessibleName = "Benachrichtigungen" };
+        var unread = 0;
+        var newestNotice = "";
+        var previousNotice = "";
+        Action<string> notify = message =>
+        {
+            previousNotice = newestNotice;
+            newestNotice = message;
+            unread = Math.Min(2, unread + 1);
+            bell.Text = "🔔 " + unread;
+            bell.BackColor = Color.LightGoldenrodYellow;
+        };
+        bell.Click += delegate
+        {
+            notices.Items.Clear();
+            notices.Items.Add(string.IsNullOrEmpty(newestNotice) ? "Keine Benachrichtigungen" : newestNotice).Enabled = false;
+            if (!string.IsNullOrEmpty(previousNotice)) notices.Items.Add(previousNotice).Enabled = false;
+            unread = 0;
+            bell.Text = "🔔";
+            bell.BackColor = SystemColors.Control;
+            notices.Show(bell, new Point(0, bell.Height));
+        };
+        var header = new Panel { Dock = DockStyle.Top, Height = 52 };
+        toolbar.Dock = DockStyle.Fill;
+        header.Controls.AddRange(new Control[] { toolbar, bell });
+        music.WishAdded += title => notify("Musikwunsch: " + title);
         var tabs = new TabControl { Dock = DockStyle.Fill };
         var liveTab = new TabPage("TikTok-Webansicht");
         liveTab.Controls.Add(browser);
@@ -118,7 +145,9 @@ internal sealed class BotWindow : Form
         browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
         musicTab.Controls.Add(music);
         var updatesTab = new TabPage("Updates");
-        updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
+        var updater = new Updates { Dock = DockStyle.Fill };
+        updater.UpdateAvailable += version => notify("Update " + version + " verfügbar.");
+        updatesTab.Controls.Add(updater);
         var errorTab = new TabPage("Fehlerlog");
         errorTab.Controls.Add(new ErrorLogView { Dock = DockStyle.Fill });
         var statsTab = new TabPage("LIVE-Auswertung");
@@ -144,9 +173,13 @@ internal sealed class BotWindow : Form
             tabs.SelectedTab = settingsTab;
             menu.SelectedIndex = Array.IndexOf(settingsPages, page);
         };
-        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, statsTab, settingsTab });
+        var youtubeTab = new TabPage("YouTube");
+        var openYouTube = new Button { Text = "YouTube öffnen / anmelden", AutoSize = true, Location = new Point(12, 12) };
+        openYouTube.Click += delegate { MusicQueue.OpenYouTube("https://www.youtube.com/"); };
+        youtubeTab.Controls.Add(openYouTube);
+        tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, youtubeTab, statsTab, settingsTab });
         tabs.SelectedTab = chatTab;
-        Controls.AddRange(new Control[] { tabs, status, account, toolbar });
+        Controls.AddRange(new Control[] { tabs, status, account, header });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var liveStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 12, 0) };
         Action<bool> updateLiveStatus = connected =>
@@ -215,7 +248,17 @@ internal sealed class BotWindow : Form
         diagnostics.Click += delegate { openSetting(errorTab); };
         accountTools.Controls.AddRange(new Control[] { signIn, new Label { Text = "Öffentlicher @Name des Bot-Kontos", AutoSize = true }, configured, saveAccount, accountHelp, diagnostics });
         accountTab.Controls.Add(accountTools);
-        settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab };
+        var intervalsTab = new TabPage("Prüfintervalle");
+        var intervals = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
+        var updateTimer = new Timer();
+        AddInterval(intervals, "Updates prüfen (Minuten)", "update-interval", 60, updateTimer);
+        AddInterval(intervals, "LIVE prüfen (Minuten)", "live-interval", 1, liveTimer);
+        updateTimer.Tick += async delegate { await updater.Check(); };
+        if (!smokeTest)
+            Shown += async delegate { updateTimer.Start(); await updater.Check(); };
+        Disposed += delegate { updateTimer.Dispose(); notices.Dispose(); };
+        intervalsTab.Controls.Add(intervals);
+        settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -254,6 +297,30 @@ internal sealed class BotWindow : Form
         AppTheme.Apply(this);
         updateLiveStatus(false);
         Shown += InitializeBrowser;
+    }
+
+    private void AddInterval(Control panel, string label, string file, int fallback, Timer timer)
+    {
+        var path = Path.Combine(data, file + ".txt");
+        var minutes = fallback;
+        try
+        {
+            int saved;
+            if (File.Exists(path) && int.TryParse(File.ReadAllText(path), out saved) && saved >= 1 && saved <= 240) minutes = saved;
+        }
+        catch (IOException error) { ErrorLog.Write("Einstellungen", "Prüfintervall konnte nicht geladen werden.", error); }
+        catch (UnauthorizedAccessException error) { ErrorLog.Write("Einstellungen", "Prüfintervall konnte nicht geladen werden.", error); }
+        var field = new NumericUpDown { Minimum = 1, Maximum = 240, Value = minutes, Width = 100, AccessibleName = label };
+        timer.Interval = minutes * 60000;
+        field.ValueChanged += delegate
+        {
+            timer.Interval = (int)field.Value * 60000;
+            try { Directory.CreateDirectory(data); File.WriteAllText(path, ((int)field.Value).ToString()); }
+            catch (IOException error) { Report("Prüfintervall konnte nicht gespeichert werden.", error.GetType().Name); }
+            catch (UnauthorizedAccessException error) { Report("Prüfintervall konnte nicht gespeichert werden.", error.GetType().Name); }
+        };
+        panel.Controls.Add(new Label { Text = label, AutoSize = true });
+        panel.Controls.Add(field);
     }
 
     private void ConfigureLiveMonitor(Func<bool> webViewSelected)
@@ -370,7 +437,8 @@ internal sealed class BotWindow : Form
                             LiveAddress("@creator") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
-                            await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data))
+                            await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
+                            await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
                     finally { Close(); }
@@ -435,7 +503,9 @@ internal sealed class BotWindow : Form
         const string secret = "chat-key-must-not-appear";
         ErrorLog.Write("Starttest", "Absichtlicher Testfehler.", new IOException(secret));
         var entries = ErrorLog.Read();
+        ErrorLog.Clear();
         return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret) &&
+            ErrorLog.Read() == "Keine Fehler protokolliert." &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie heißt das Spiel?", "Minecraft") == "Das Spiel heißt Minecraft." &&
             ChatReplies.Suggest("Wie kann ich mir ein Lied wünschen?", "", true).Contains("#Musikwunsch") &&

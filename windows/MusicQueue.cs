@@ -16,6 +16,7 @@ internal sealed class MusicQueue : UserControl
     private bool playing;
     private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
+    private readonly ListBox youtubeRequests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "YouTube Music Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
     private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
     private readonly List<FileInfo> library = new List<FileInfo>();
@@ -25,6 +26,7 @@ internal sealed class MusicQueue : UserControl
     private readonly Func<bool> chatAvailable;
     private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
     internal bool RequestsEnabled { get { return collect.Checked; } }
+    internal event Action<string> WishAdded;
 
     internal MusicQueue(Func<bool> chatAvailable)
     {
@@ -74,7 +76,12 @@ internal sealed class MusicQueue : UserControl
             if (AddWish(query.Text)) query.Clear();
         };
         AddButton(searchTools, "Wunsch öffnen", () => Search(requests.SelectedItem as string));
-        AddButton(searchTools, "Wunsch entfernen", delegate { if (requests.SelectedIndex >= 0) requests.Items.RemoveAt(requests.SelectedIndex); });
+        AddButton(searchTools, "Wunsch entfernen", delegate
+        {
+            if (requests.SelectedIndex < 0) return;
+            youtubeRequests.Items.Remove(requests.SelectedItem);
+            requests.Items.RemoveAt(requests.SelectedIndex);
+        });
         searchTools.Controls.Add(collect);
         searchTools.Controls.Add(autoPlay);
         AddButton(searchTools, "Chattext kopieren", delegate { if (prompt.Text.Length > 0) Clipboard.SetText(prompt.Text); });
@@ -84,7 +91,18 @@ internal sealed class MusicQueue : UserControl
         local.Controls.AddRange(new Control[] { queue, status, tools });
         var remote = new TabPage("Spotify und Musikwünsche");
         remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus, prompt });
-        sources.TabPages.AddRange(new[] { local, remote });
+        var youtubeMusic = new TabPage("YouTube Music und Musikwünsche");
+        var ytTools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        AddButton(ytTools, "YouTube Music öffnen / anmelden", () => OpenYouTube("https://music.youtube.com/"));
+        AddButton(ytTools, "Wunsch suchen", () =>
+        {
+            var title = youtubeRequests.SelectedItem as string;
+            if (title != null) OpenYouTube("https://music.youtube.com/search?q=" + Uri.EscapeDataString(title));
+        });
+        youtubeMusic.Controls.AddRange(new Control[] { youtubeRequests, ytTools });
+        var spotifyQueue = new TabPage("Spotify-Warteschlange");
+        spotifyQueue.Controls.Add(new SpotifyQueueControl { Dock = DockStyle.Fill });
+        sources.TabPages.AddRange(new[] { local, remote, spotifyQueue, youtubeMusic });
         Controls.Add(sources);
         collect.CheckedChanged += delegate
         {
@@ -158,12 +176,20 @@ internal sealed class MusicQueue : UserControl
             return false;
         }
         var index = requests.Items.Add(title);
+        youtubeRequests.Items.Add(title);
+        if (WishAdded != null) WishAdded(title);
         if (manual)
         {
             requests.SelectedIndex = index;
             spotifyStatus.Text = "Im Bot gespeichert. Öffne den Wunsch und füge den Titel in Spotify zur Warteschlange hinzu.";
         }
         return true;
+    }
+
+    internal static void OpenYouTube(string address)
+    {
+        try { using (var launched = Process.Start(new ProcessStartInfo(address) { UseShellExecute = true })) { } }
+        catch (System.ComponentModel.Win32Exception error) { ErrorLog.Write("YouTube", "YouTube konnte nicht im Browser geöffnet werden.", error); }
     }
 
     private void QueueRequest(FileInfo file)

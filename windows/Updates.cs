@@ -10,12 +10,14 @@ using System.Windows.Forms;
 internal sealed class Updates : UserControl
 {
     private const string Repo = "jonascool19-pixel/TikTok-Bot";
-    private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromMinutes(15), MaxResponseContentBufferSize = 512 * 1024 * 1024 };
+    private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
     private readonly Label status = new Label { Dock = DockStyle.Top, Height = 44 };
     private readonly Button check = new Button { Text = "Nach Updates suchen", AutoSize = true };
     private readonly Button install = new Button { Text = "Update installieren", AutoSize = true, Enabled = false };
     private Asset available;
     private readonly Version current;
+    private Version notified;
+    internal event Action<string> UpdateAvailable;
 
     static Updates()
     {
@@ -34,8 +36,9 @@ internal sealed class Updates : UserControl
         install.Click += async delegate { await Install(); };
     }
 
-    private async Task Check()
+    internal async Task Check()
     {
+        if (IsDisposed || !check.Enabled) return;
         check.Enabled = install.Enabled = false;
         available = null;
         status.Text = "Suche nach einem Windows-Update …";
@@ -69,6 +72,11 @@ internal sealed class Updates : UserControl
             status.Text = available == null ? "Kein neueres Windows-Update veröffentlicht. Installiert: " + current.ToString(3)
                 : "Windows-Update " + latest.ToString(3) + " verfügbar.";
             install.Enabled = available != null;
+            if (available != null && latest != notified)
+            {
+                notified = latest;
+                if (UpdateAvailable != null) UpdateAvailable(latest.ToString(3));
+            }
         }
         catch (HttpRequestException error) { ReportError("Updatesuche fehlgeschlagen. ", error); }
         catch (OperationCanceledException error) { ReportError("Die Updatesuche hat zu lange gedauert.", error); }
@@ -85,16 +93,21 @@ internal sealed class Updates : UserControl
         status.Text = "Setup wird geladen und geprüft …";
         try
         {
-            var bytes = await Client.GetByteArrayAsync(asset.browser_download_url);
-            using (var sha = SHA256.Create())
-                if (!("sha256:" + BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", ""))
-                    .Equals(asset.digest, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException();
-            if (IsDisposed) return;
             var folder = Path.Combine(Path.GetTempPath(), "TikTokBot-Update-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(folder);
             var file = Path.Combine(folder, "TikTok-Bot-Setup.exe");
-            File.WriteAllBytes(file, bytes);
+            using (var response = await Client.GetAsync(asset.browser_download_url, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                using (var input = await response.Content.ReadAsStreamAsync())
+                using (var destination = File.Create(file)) await input.CopyToAsync(destination);
+            }
+            using (var sha = SHA256.Create())
+            using (var input = File.OpenRead(file))
+                if (!("sha256:" + BitConverter.ToString(sha.ComputeHash(input)).Replace("-", ""))
+                    .Equals(asset.digest, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException();
+            if (IsDisposed) return;
             var installedPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
             using (var setup = Process.Start(new ProcessStartInfo(file,
                 "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEBOT=1 /DIR=\"" + installedPath + "\"") { UseShellExecute = true })) { }
