@@ -39,7 +39,7 @@ internal sealed class BotWindow : Form
     private bool missingAccountLogged;
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 32, Text = "TikTok-Ansicht wird gestartet …" };
     private readonly bool smokeTest;
-    private ChatReplies replyDialog;
+    private readonly Label accountState = new Label { AutoSize = true, Text = "Bot-Konto: Anmeldung wird geprüft" };
     private readonly string data;
     internal int ExitCode { get; private set; }
 
@@ -58,22 +58,7 @@ internal sealed class BotWindow : Form
         MinimumSize = new Size(1000, 430);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         toolbar.Controls.Add(new Label { Text = "@Name oder LIVE-Link", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
-        var replies = new Button { Text = "Chatantworten", AutoSize = true };
-        replies.Click += delegate
-        {
-            if (replyDialog != null)
-            {
-                replyDialog.Activate();
-                return;
-            }
-            var dialog = new ChatReplies();
-            replyDialog = dialog;
-            dialog.FormClosed += delegate
-            {
-                replyDialog = null;
-            };
-            dialog.Show(this);
-        };
+        var replies = new ChatReplies { Dock = DockStyle.Fill };
         var profile = new Button { Text = "Profil öffnen", AutoSize = true, Enabled = false };
         profile.Click += delegate
         {
@@ -86,7 +71,8 @@ internal sealed class BotWindow : Form
             browser.CoreWebView2.Navigate(target.Substring(0, target.Length - "/live".Length));
         };
         open.EnabledChanged += delegate { profile.Enabled = open.Enabled; };
-        toolbar.Controls.AddRange(new Control[] { room, open, profile, login, replies });
+        toolbar.Controls.AddRange(new Control[] { room, open, profile, login });
+        toolbar.Controls.Add(accountState);
         var tabs = new TabControl { Dock = DockStyle.Fill };
         var liveTab = new TabPage("TikTok LIVE");
         liveTab.Controls.Add(browser);
@@ -97,7 +83,7 @@ internal sealed class BotWindow : Form
         comments.ViewerComment += (handle, message) =>
         {
             if (!string.IsNullOrEmpty(handle) && string.Equals("@" + handle, botHandle ?? configuredHandle, StringComparison.OrdinalIgnoreCase)) return;
-            if (!music.ConsiderRequest(handle, message) && replyDialog != null) replyDialog.ConsiderLiveComment(message);
+            if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); };
         musicTab.Controls.Add(music);
@@ -105,7 +91,9 @@ internal sealed class BotWindow : Form
         updatesTab.Controls.Add(new Updates { Dock = DockStyle.Fill });
         var errorTab = new TabPage("Fehlerlog");
         errorTab.Controls.Add(new ErrorLogView { Dock = DockStyle.Fill });
-        tabs.TabPages.AddRange(new[] { liveTab, chatTab, musicTab, updatesTab, errorTab });
+        var repliesTab = new TabPage("Chatantworten");
+        repliesTab.Controls.Add(replies);
+        tabs.TabPages.AddRange(new[] { liveTab, chatTab, repliesTab, musicTab, updatesTab, errorTab });
         Controls.AddRange(new Control[] { tabs, status, account, toolbar });
         var liveOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
         var nickname = new Button { Text = "Bot-Profil / Spitzname ändern", AutoSize = true };
@@ -181,7 +169,11 @@ internal sealed class BotWindow : Form
             if (monitor.Checked) SaveMonitor(target);
             browser.CoreWebView2.Navigate(target);
         };
-        login.Click += delegate { browser.CoreWebView2.Navigate("https://www.tiktok.com/login"); };
+        login.Click += async delegate
+        {
+            if (!checkingAccount && !await RefreshAccount() && !IsDisposed)
+                browser.CoreWebView2.Navigate("https://www.tiktok.com/login");
+        };
         Shown += InitializeBrowser;
     }
 
@@ -336,42 +328,52 @@ internal sealed class BotWindow : Form
         const string secret = "chat-key-must-not-appear";
         ErrorLog.Write("Starttest", "Absichtlicher Testfehler.", new IOException(secret));
         var entries = ErrorLog.Read();
-        return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret);
+        return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret) &&
+            ChatReplies.Suggest("Moin!", "") != null &&
+            ChatReplies.Suggest("Wie heißt das Spiel?", "Minecraft") == "Das Spiel heißt Minecraft." &&
+            ChatReplies.Suggest("okay", "") == null;
     }
 
     private async void CheckAccount(object sender, EventArgs args)
     {
+        await RefreshAccount();
+    }
+
+    private async System.Threading.Tasks.Task<bool> RefreshAccount()
+    {
         var core = browser.CoreWebView2;
-        if (checkingAccount || core == null) return;
-        Uri page;
-        if (!Uri.TryCreate(core.Source, UriKind.Absolute, out page) ||
-            page.Scheme != "https" || page.Host != "www.tiktok.com" || !page.IsDefaultPort)
-        {
-            account.Text = "Bot-Konto: noch nicht erkannt";
-            return;
-        }
+        if (checkingAccount || core == null) return false;
         checkingAccount = true;
         try
         {
+            var cookies = await core.CookieManager.GetCookiesAsync("https://www.tiktok.com/");
+            var signedIn = false;
+            foreach (var cookie in cookies)
+                if ((cookie.Name == "sessionid" || cookie.Name == "sessionid_ss") && !string.IsNullOrEmpty(cookie.Value) &&
+                    (cookie.IsSession || cookie.Expires.ToUniversalTime() > DateTime.UtcNow))
+                    signedIn = true;
             var result = await core.ExecuteScriptAsync(
                 @"(() => {
                     if (location.origin !== 'https://www.tiktok.com') return null;
                     const link = document.querySelector('[data-e2e=""profile-icon""] a[href^=""/@""], a[data-e2e=""profile-icon""][href^=""/@""], a[data-e2e=""profile-link""][href^=""/@""]');
                     return link ? link.getAttribute('href').split(/[/?#]/)[1] : null;
                 })()");
-            if (IsDisposed) return;
+            if (IsDisposed) return false;
             var handle = Regex.Match(result, @"\A""(@[a-zA-Z0-9_.]{1,64})""\z");
             botHandle = handle.Success ? handle.Groups[1].Value : null;
-            if (botHandle != null)
+            if (signedIn || botHandle != null)
             {
-                account.Text = "TikTok-Sitzung: " + botHandle;
-                if (configuredHandle != null && !string.Equals(botHandle, configuredHandle, StringComparison.OrdinalIgnoreCase))
+                accountState.Text = "Bot-Konto angemeldet";
+                account.Text = accountState.Text + (botHandle == null ? "" : " · " + botHandle);
+                if (botHandle != null && configuredHandle != null && !string.Equals(botHandle, configuredHandle, StringComparison.OrdinalIgnoreCase))
                     account.Text += " · Gespeichertes Konto: " + configuredHandle;
                 missingAccountLogged = false;
+                return true;
             }
             else
             {
-                account.Text = configuredHandle == null ? "Bot-Konto: noch nicht erkannt" :
+                accountState.Text = "Bot-Konto nicht angemeldet";
+                account.Text = configuredHandle == null ? accountState.Text :
                     "Bot-Konto: " + configuredHandle + " gespeichert · Anmeldung konnte nicht bestätigt werden";
                 if (configuredHandle != null && !missingAccountLogged)
                 {
@@ -380,8 +382,12 @@ internal sealed class BotWindow : Form
                 }
             }
         }
-        catch (InvalidOperationException) { if (!IsDisposed) account.Text = "Bot-Konto: noch nicht erkannt"; }
+        catch (InvalidOperationException error)
+        {
+            if (!IsDisposed) ErrorLog.Write("Bot-Konto", "TikTok-Sitzung konnte nicht geprüft werden.", error);
+        }
         finally { checkingAccount = false; }
+        return false;
     }
 
     protected override void Dispose(bool disposing)
