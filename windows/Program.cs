@@ -134,13 +134,15 @@ internal sealed class BotWindow : Form
         var repliesTab = new TabPage("Chatantworten");
         repliesTab.Controls.Add(replies);
         var settingsTab = new TabPage("Einstellungen");
-        var settings = new TabControl { Dock = DockStyle.Fill };
-        settings.TabPages.AddRange(new[] { updatesTab, liveTab, errorTab });
-        settingsTab.Controls.Add(settings);
+        var menu = new ListBox { Dock = DockStyle.Left, Width = 200, IntegralHeight = false, AccessibleName = "Einstellungsbereiche" };
+        var settingsContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14) };
+        settingsTab.Padding = new Padding(12);
+        settingsTab.Controls.AddRange(new Control[] { settingsContent, menu });
+        TabPage[] settingsPages = null;
         Action<TabPage> openSetting = page =>
         {
             tabs.SelectedTab = settingsTab;
-            settings.SelectedTab = page;
+            menu.SelectedIndex = Array.IndexOf(settingsPages, page);
         };
         tabs.TabPages.AddRange(new[] { chatTab, repliesTab, musicTab, statsTab, settingsTab });
         tabs.SelectedTab = chatTab;
@@ -171,7 +173,7 @@ internal sealed class BotWindow : Form
             if (browser.CoreWebView2 != null) browser.CoreWebView2.IsMuted = muteLive.Checked;
         };
         liveOptions.Controls.AddRange(new Control[] { liveStatus, monitor, nickname, muteLive });
-        ConfigureLiveMonitor(() => tabs.SelectedTab == settingsTab && settings.SelectedTab == liveTab);
+        ConfigureLiveMonitor(() => tabs.SelectedTab == settingsTab && menu.SelectedIndex == 2);
         var accountTab = new TabPage("Bot-Konto");
         var accountTools = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12) };
         var signIn = new Button { Text = "Bei TikTok anmelden", AutoSize = true };
@@ -213,7 +215,21 @@ internal sealed class BotWindow : Form
         diagnostics.Click += delegate { openSetting(errorTab); };
         accountTools.Controls.AddRange(new Control[] { signIn, new Label { Text = "Öffentlicher @Name des Bot-Kontos", AutoSize = true }, configured, saveAccount, accountHelp, diagnostics });
         accountTab.Controls.Add(accountTools);
-        settings.TabPages.Insert(0, accountTab);
+        settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab };
+        foreach (var page in settingsPages)
+        {
+            menu.Items.Add(page.Text);
+            var panel = new Panel { Dock = DockStyle.Fill, Visible = false };
+            while (page.Controls.Count > 0) panel.Controls.Add(page.Controls[0]);
+            settingsContent.Controls.Add(panel);
+            page.Dispose();
+        }
+        menu.SelectedIndexChanged += delegate
+        {
+            for (var index = 0; index < settingsPages.Length; index++)
+                settingsContent.Controls[index].Visible = index == menu.SelectedIndex;
+        };
+        menu.SelectedIndex = 0;
         Controls.Add(liveOptions);
         AcceptButton = open;
         open.Click += delegate
@@ -234,6 +250,9 @@ internal sealed class BotWindow : Form
                 browser.CoreWebView2.Navigate("https://www.tiktok.com/login");
             }
         };
+        Font = AppTheme.TextFont;
+        AppTheme.Apply(this);
+        updateLiveStatus(false);
         Shown += InitializeBrowser;
     }
 

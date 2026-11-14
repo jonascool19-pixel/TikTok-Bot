@@ -15,6 +15,8 @@ internal sealed class LiveComments : UserControl
     private readonly ComboBox style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135, AccessibleName = "Stimmeffekt" };
     private readonly NumericUpDown volume = new NumericUpDown { Value = 75, Maximum = 100, Width = 55, AccessibleName = "Lautstärke" };
     private readonly NumericUpDown speed = new NumericUpDown { Value = 100, Minimum = 50, Maximum = 200, Increment = 10, Width = 60, AccessibleName = "Sprechtempo in Prozent" };
+    private readonly Button saveVoice = new Button { Text = "Stimme speichern", AutoSize = true };
+    private readonly Label savedVoice = new Label { Dock = DockStyle.Bottom, Height = 28, Text = "Stimmänderungen werden automatisch gespeichert." };
     private readonly Timer timer = new Timer { Interval = 2500 };
     private readonly JavaScriptSerializer json = new JavaScriptSerializer();
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Öffne einen TikTok-LIVE." };
@@ -71,8 +73,8 @@ internal sealed class LiveComments : UserControl
         style.Items.AddRange(new object[] { "Original", "Cartoon · hoch", "Cartoon · tief" });
         style.SelectedIndex = 0;
         toolbar.Controls.AddRange(new Control[] { read, voice, style, new Label { Text = "Lautstärke %", AutoSize = true }, volume,
-            new Label { Text = "Tempo %", AutoSize = true }, speed, test });
-        Controls.AddRange(new Control[] { history, status, toolbar });
+            new Label { Text = "Tempo %", AutoSize = true }, speed, test, saveVoice });
+        Controls.AddRange(new Control[] { history, status, savedVoice, toolbar });
         timer.Tick += Poll;
         read.CheckedChanged += delegate { if (!read.Checked) StopSpeech(); };
         test.Click += delegate { Speak("Das ist ein Test der Sprachausgabe."); };
@@ -120,6 +122,7 @@ internal sealed class LiveComments : UserControl
         public string Effect { get; set; }
         public decimal Volume { get; set; }
         public decimal Speed { get; set; }
+        public bool ReadComments { get; set; }
     }
 
     internal void LoadVoicePreferences(string directory)
@@ -136,6 +139,8 @@ internal sealed class LiveComments : UserControl
                     if (style.Items.Contains(saved.Effect ?? "")) style.SelectedItem = saved.Effect;
                     if (saved.Volume >= volume.Minimum && saved.Volume <= volume.Maximum) volume.Value = saved.Volume;
                     if (saved.Speed >= speed.Minimum && saved.Speed <= speed.Maximum) speed.Value = saved.Speed;
+                    read.Checked = saved.ReadComments;
+                    savedVoice.Text = "Stimmeinstellungen geladen.";
                 }
             }
         }
@@ -149,23 +154,26 @@ internal sealed class LiveComments : UserControl
             var preferences = new VoicePreferences
             {
                 Voice = voice.SelectedItem as string, Effect = style.SelectedItem as string,
-                Volume = volume.Value, Speed = speed.Value
+                Volume = volume.Value, Speed = speed.Value, ReadComments = read.Checked
             };
             try
             {
                 Directory.CreateDirectory(directory);
-                var staging = path + ".tmp";
+                var staging = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 File.WriteAllText(staging, json.Serialize(preferences));
                 if (File.Exists(path)) File.Replace(staging, path, null);
                 else File.Move(staging, path);
+                savedVoice.Text = "Stimmeinstellungen gespeichert.";
             }
-            catch (IOException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht gespeichert werden.", error); }
-            catch (UnauthorizedAccessException error) { ErrorLog.Write("Audio", "Stimmeinstellungen konnten nicht gespeichert werden.", error); }
+            catch (IOException error) { savedVoice.Text = "Stimmeinstellungen konnten nicht gespeichert werden."; ErrorLog.Write("Audio", savedVoice.Text, error); }
+            catch (UnauthorizedAccessException error) { savedVoice.Text = "Stimmeinstellungen konnten nicht gespeichert werden."; ErrorLog.Write("Audio", savedVoice.Text, error); }
         };
         voice.SelectedIndexChanged += save;
         style.SelectedIndexChanged += save;
         volume.ValueChanged += save;
         speed.ValueChanged += save;
+        read.CheckedChanged += save;
+        saveVoice.Click += save;
     }
 
     internal static bool VerifyVoicePreferences(string directory)
@@ -178,9 +186,11 @@ internal sealed class LiveComments : UserControl
             first.style.SelectedIndex = 2;
             first.volume.Value = 42;
             first.speed.Value = 130;
+            first.read.Checked = true;
+            first.saveVoice.PerformClick();
             second.LoadVoicePreferences(directory);
             return Equals(first.voice.SelectedItem, second.voice.SelectedItem) &&
-                second.style.SelectedIndex == 2 && second.volume.Value == 42 && second.speed.Value == 130;
+                second.style.SelectedIndex == 2 && second.volume.Value == 42 && second.speed.Value == 130 && second.read.Checked;
         }
     }
 
