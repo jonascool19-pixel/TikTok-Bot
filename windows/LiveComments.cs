@@ -13,6 +13,7 @@ internal sealed class LiveComments : UserControl
     private readonly ComboBox voice = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, AccessibleName = "Stimme" };
     private readonly ComboBox style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135, AccessibleName = "Stimmeffekt" };
     private readonly NumericUpDown volume = new NumericUpDown { Value = 75, Maximum = 100, Width = 55, AccessibleName = "Lautstärke" };
+    private readonly NumericUpDown speed = new NumericUpDown { Value = 100, Minimum = 50, Maximum = 200, Increment = 10, Width = 60, AccessibleName = "Sprechtempo in Prozent" };
     private readonly Timer timer = new Timer { Interval = 2500 };
     private readonly JavaScriptSerializer json = new JavaScriptSerializer();
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Öffne einen TikTok-LIVE." };
@@ -56,7 +57,8 @@ internal sealed class LiveComments : UserControl
         var test = new Button { Text = "Stimme testen", AutoSize = true };
         style.Items.AddRange(new object[] { "Original", "Cartoon · hoch", "Cartoon · tief" });
         style.SelectedIndex = 0;
-        toolbar.Controls.AddRange(new Control[] { read, voice, style, new Label { Text = "Lautstärke %", AutoSize = true }, volume, test });
+        toolbar.Controls.AddRange(new Control[] { read, voice, style, new Label { Text = "Lautstärke %", AutoSize = true }, volume,
+            new Label { Text = "Tempo %", AutoSize = true }, speed, test });
         Controls.AddRange(new Control[] { history, status, toolbar });
         timer.Tick += Poll;
         read.CheckedChanged += delegate { if (!read.Checked) StopSpeech(); };
@@ -167,7 +169,7 @@ internal sealed class LiveComments : UserControl
             var cancellation = new System.Threading.CancellationTokenSource();
             characterSpeech = cancellation;
             speaking = true;
-            try { await LocalVoices.Speak(voice.SelectedIndex - localVoiceCount, text, (int)volume.Value, cancellation.Token); }
+            try { await LocalVoices.Speak(voice.SelectedIndex - localVoiceCount, text, (int)volume.Value, (int)speed.Value, cancellation.Token); }
             catch (OperationCanceledException) { }
             catch (Exception error)
             {
@@ -185,6 +187,7 @@ internal sealed class LiveComments : UserControl
         {
             speech.SelectVoice((string)voice.SelectedItem);
             speech.Volume = (int)volume.Value;
+            speech.Rate = (int)Math.Round(10 * Math.Log((double)speed.Value / 100, 2));
             var text = pending.Dequeue();
             if (style.SelectedIndex == 0) speech.SpeakAsync(text);
             else

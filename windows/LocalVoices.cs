@@ -11,7 +11,7 @@ internal static class LocalVoices
     internal static readonly string[] Names = { "Kerstin", "Thorsten · neutral", "Thorsten · amüsiert", "Thorsten · überrascht", "Thorsten · flüsternd", "Thorsten · müde" };
     private static readonly int[] Speakers = { 0, 4, 0, 6, 7, 5 };
 
-    internal static Task Speak(int index, string text, int volume, CancellationToken token)
+    internal static Task Speak(int index, string text, int volume, int speed, CancellationToken token)
     {
         return Task.Run(() =>
         {
@@ -23,6 +23,7 @@ internal static class LocalVoices
                 token.ThrowIfCancellationRequested();
                 using (var process = Process.Start(new ProcessStartInfo(Path.Combine(piper, "piper.exe"),
                     "--model \"" + Path.Combine(piper, model + ".onnx") + "\" --speaker " + Speakers[index] +
+                    " --length_scale " + (100.0 / speed).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                     " --output_file \"" + output + "\"")
                 {
                     WorkingDirectory = piper, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true
