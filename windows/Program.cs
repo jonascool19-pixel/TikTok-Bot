@@ -348,7 +348,9 @@ internal sealed class BotWindow : Form
         }
         designOptions.Controls.AddRange(new Control[] { designTitle, designPicker, previews });
         designsTab.Controls.Add(designOptions);
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab };
+        var helpTab = new TabPage("Anleitung");
+        helpTab.Controls.Add(new MusicHelp { Dock = DockStyle.Fill });
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, helpTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
