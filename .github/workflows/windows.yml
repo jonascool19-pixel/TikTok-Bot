@@ -39,6 +39,8 @@ jobs:
           $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
           Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
           Copy-Item -LiteralPath windows/SpotifyControl.ps1 -Destination $app
+          $youTubePlayer = New-Item -ItemType Directory -Path (Join-Path $app "youtube-player")
+          Copy-Item -LiteralPath windows/youtube-player.html -Destination $youTubePlayer.FullName
           npm ci --prefix windows/gifts --omit=dev --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'Gift receiver dependencies could not be installed.' }
           node windows/gifts/receive.test.mjs

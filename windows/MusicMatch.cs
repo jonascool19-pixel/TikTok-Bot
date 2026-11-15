@@ -1,7 +1,7 @@
 internal sealed class MusicMatch
 {
     internal readonly string Id;
-    internal readonly string Title;
+    public string Title { get; private set; }
 
     internal MusicMatch(string id, string title)
     {
