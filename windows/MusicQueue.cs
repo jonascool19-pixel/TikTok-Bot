@@ -176,9 +176,14 @@ internal sealed class MusicQueue : UserControl
         bind("youtube-music-use-desktop", usePear);
     }
 
+    internal static bool IsMusicCommand(string text)
+    {
+        return Regex.IsMatch(text.TrimStart(), @"\A(?:#musikwunsch|#antwort|!song|!wunsch)(?:\s|$)", RegexOptions.IgnoreCase);
+    }
+
     internal async Task<bool> ConsiderRequest(string handle, string name, string message)
     {
-        if (!collect.Checked) return false;
+        if (!collect.Checked) return IsMusicCommand(message);
         var handleKey = string.IsNullOrEmpty(handle) ? "" : "@" + handle;
         var nameKey = string.IsNullOrWhiteSpace(name) ? "" : "name:" + name.Trim();
         var selection = Regex.Match(message.Trim(), @"\A(?:#Antwort\s+)?([123])\z", RegexOptions.IgnoreCase);
@@ -199,8 +204,8 @@ internal sealed class MusicQueue : UserControl
                 return true;
             }
         }
-        var match = Regex.Match(message, @"\A(?:#musikwunsch|!song|!wunsch)\s+(.{2,150})\z", RegexOptions.IgnoreCase);
-        if (!match.Success) return false;
+        var match = Regex.Match(message.Trim(), @"\A(?:#musikwunsch|!song|!wunsch)\s+(.{2,150})\z", RegexOptions.IgnoreCase);
+        if (!match.Success) return IsMusicCommand(message);
         var title = match.Groups[1].Value.Trim();
         if (title.Length < 2) return true;
         if (AddWish(title, false) == false && requests.Items.Count >= 100) return true;
@@ -314,12 +319,13 @@ internal sealed class MusicQueue : UserControl
         choices[key] = new Choice { Remote = localTracks == null ? options : null, Tracks = localTracks, Expires = DateTime.UtcNow.AddMinutes(3) };
         var addressee = string.IsNullOrEmpty(handle) ? nameKey.Substring(5) : "@" + handle;
         var header = string.IsNullOrEmpty(handle) ? LimitChatText(addressee, 42) : addressee;
-        var max = (150 - header.Length - options.Length * ("#Antwort 1 = ".Length + 1)) / options.Length;
-        var question = header + "\n" + string.Join("\n", options.Select((item, index) =>
-            "#Antwort " + (index + 1) + " = " + LimitChatText(Regex.Replace(item.Title, @"\s+", " ").Trim(), max)));
+        var max = (150 - header.Length - options.Length * ("#Antwort 1 = ".Length + 3)) / options.Length;
+        var lines = options.Select((item, index) =>
+            "#Antwort " + (index + 1) + " = " + LimitChatText(Regex.Replace(item.Title, @"\s+", " ").Trim(), max)).ToArray();
+        var question = header + Environment.NewLine + string.Join(Environment.NewLine, lines);
         prompt.Text = question;
         if (SendChoice == null) return;
-        var delivery = await SendChoice(question);
+        var delivery = await SendChoice(header + " | " + string.Join(" | ", lines));
         if (WishIsCurrent(session) && prompt.Text == question && delivery != null) spotifyStatus.Text = delivery;
     }
 

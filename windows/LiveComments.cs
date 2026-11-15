@@ -55,17 +55,18 @@ internal sealed class LiveComments : UserControl
     const comments = [];
     for (const row of Array.from(root.querySelectorAll('[data-e2e=""chat-message""]')).slice(-100)) {
         const name = row.querySelector('[data-e2e=""message-owner-name""]');
-        const text = row.querySelector('.break-words.align-middle');
+        const parts = Array.from(row.querySelectorAll('.break-words.align-middle')).filter(part => !part.contains(name));
+        const text = parts.filter(part => !parts.some(parent => parent !== part && parent.contains(part)))
+            .map(part => part.innerText || part.textContent).join(' ');
         if (!name || !text) continue;
-        const link = name.closest('a[href]') || name.querySelector('a[href]') ||
-            row.querySelector('a[href^=""/@""], a[href^=""https://www.tiktok.com/@""]');
+        const link = name.closest('a[href]') || name.querySelector('a[href]');
         let profile;
         try { if (link && link.href) profile = new URL(link.href, location.href); } catch {}
         const fromLink = profile && (profile.origin === location.origin || profile.origin === 'https://www.tiktok.com') &&
             profile.pathname.match(/^\/@([\w.]{1,64})\/?$/);
         const rawHandle = name.getAttribute('data-unique-id') || row.getAttribute('data-unique-id') || '';
         const handle = fromLink ? fromLink[1] : (/^@?[\w.]{1,64}$/.test(rawHandle) ? rawHandle.replace(/^@/, '') : '');
-        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.textContent.trim().slice(0,300), Handle: handle };
+        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.trim().slice(0,300), Handle: handle };
         if (!entry.Name || !entry.Text) continue;
         const key = JSON.stringify(entry);
         if (previous && previous.root === root && seen.get(row) !== key) comments.push(entry);
@@ -224,11 +225,12 @@ internal sealed class LiveComments : UserControl
         await core.ExecuteScriptAsync("const row = document.querySelector('[data-e2e=chat-message]').cloneNode(true);" +
             "row.querySelector('.break-words').textContent = 'Wie heißt das Spiel?';" +
             "row.setAttribute('data-unique-id', 'test.viewer');" +
+            "row.insertAdjacentHTML('beforeend', '<a class=\"break-words align-middle\" href=\"/@mentioned\">mit Mod</a>');" +
             "document.querySelector('[data-e2e=chat-room]').appendChild(row);");
         var added = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         var repeated = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         return initial != null && initial.Count == 0 && added != null && added.Count == 1 &&
-            added[0].Name == "Zuschauer" && added[0].Handle == "test.viewer" && added[0].Text == "Wie heißt das Spiel?" &&
+            added[0].Name == "Zuschauer" && added[0].Handle == "test.viewer" && added[0].Text == "Wie heißt das Spiel? mit Mod" &&
             repeated != null && repeated.Count == 0 &&
             GiftAnnouncement("Alex", "Rose") == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
     }
@@ -283,7 +285,7 @@ internal sealed class LiveComments : UserControl
                 history.Items.Add(line);
                 history.TopIndex = history.Items.Count - 1;
                 if (IsOwnComment != null && IsOwnComment(comment.Handle, comment.Text)) continue;
-                if (read.Checked) Speak(line);
+                if (read.Checked && !comment.Text.TrimStart().StartsWith("#Musikwunsch", StringComparison.OrdinalIgnoreCase)) Speak(line);
                 var onViewer = ViewerComment;
                 if (ViewerActivity != null) ViewerActivity(comment.Handle, comment.Name);
                 if (onViewer != null) onViewer(comment.Handle, comment.Name, comment.Text);

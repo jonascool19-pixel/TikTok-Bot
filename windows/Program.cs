@@ -644,6 +644,10 @@ internal sealed class BotWindow : Form
             RunningGame.ParseSteamTitle(@"""name"" ""Euro Truck Simulator 2""") == "Euro Truck Simulator 2" &&
             RunningGame.TitleFromExecutable(@"D:\GOG Games\Testspiel\game.exe", "Testspiel", "", "") == "Testspiel" &&
             RunningGame.TitleFromExecutable(@"D:\Games\EGS\Launcher.exe", "Launcher", "", "") == "" &&
+            MusicQueue.IsMusicCommand("  #Musikwunsch Motor Town") &&
+            MusicQueue.IsMusicCommand("#Antwort 2") &&
+            !MusicQueue.IsMusicCommand("Wie geht ein Musikwunsch?") &&
+            ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&
@@ -685,7 +689,7 @@ internal sealed class BotWindow : Form
     private readonly System.Collections.Generic.Dictionary<string, DateTime> recentBotReplies =
         new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
 
-    private static string ReplyFingerprint(string text) { return Regex.Replace(text, @"\s+", " ").Trim(); }
+    private static string ReplyFingerprint(string text) { return Regex.Replace(text, @"[\s\u200B\uFEFF]+", "").ToUpperInvariant(); }
 
     private bool IsOwnComment(string handle, string message)
     {
@@ -695,9 +699,9 @@ internal sealed class BotWindow : Form
         var text = ReplyFingerprint(message);
         DateTime sentAt;
         var echo = recentBotReplies.TryGetValue(text, out sentAt) && DateTime.UtcNow - sentAt < TimeSpan.FromSeconds(30);
-        if (ownAccount || (echo && (author == null || (botHandle == null && configuredHandle == null))))
+        if (ownAccount || echo)
         {
-            recentBotReplies.Remove(text);
+            if (ownAccount) recentBotReplies.Remove(text);
             return true;
         }
         return false;
