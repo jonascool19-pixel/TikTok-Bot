@@ -652,6 +652,10 @@ internal sealed class BotWindow : Form
             LiveComments.ShouldReadComment("Moin, wie geht es dir?") &&
             !MusicQueue.IsMusicCommand("Wie geht ein Musikwunsch?") &&
             ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
+            ChatReplies.GameReply("Was ist das denn für ein Spiel?", "Motor Town") == "Das Spiel heißt Motor Town." &&
+            ChatReplies.GameReply("Was für Spiele spielst du?", "Euro Truck Simulator 2") == "Das Spiel heißt Euro Truck Simulator 2." &&
+            ChatReplies.GameReply("Was zockst du gerade?", "Minecraft") == "Das Spiel heißt Minecraft." &&
+            ChatReplies.GameReply("Welches Lied läuft?", "Minecraft") == null &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&

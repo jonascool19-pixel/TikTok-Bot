@@ -70,7 +70,7 @@ internal sealed class ChatReplies : UserControl
         var test = new Button { Text = "Testen", AutoSize = true };
         var gift = new Button { Text = "Geschenk-Dank testen", AutoSize = true };
         gift.Click += delegate { Add(GiftThanks("Alex", "Rose", 2)); };
-        tools.Controls.AddRange(new Control[] { enabled, new Label { Text = "Spiel (optional)", AutoSize = true }, game,
+        tools.Controls.AddRange(new Control[] { enabled, new Label { Text = "Manueller Spielname (optional)", AutoSize = true }, game,
             example, new Label { Text = "Testkommentar", AutoSize = true }, sample, test, copy, gift, useAi, autoSend });
         useAi.CheckedChanged += delegate
         {
@@ -245,7 +245,7 @@ internal sealed class ChatReplies : UserControl
             var detected = await Task.Run(() => RunningGame.Detect());
             if (IsDisposed || !autoGame.Checked) return;
             detectedGame = detected;
-            gameStatus.Text = string.IsNullOrWhiteSpace(detectedGame) ? "Kein Spiel erkannt." : "Erkannt: " + detectedGame;
+            gameStatus.Text = string.IsNullOrWhiteSpace(detectedGame) ? "Kein Spiel erkannt." : "Spiel für Chatantworten: " + detectedGame;
         }
         catch (Exception error)
         {
@@ -278,8 +278,8 @@ internal sealed class ChatReplies : UserControl
             return;
         }
         var gameName = autoGame.Checked && !string.IsNullOrWhiteSpace(detectedGame) ? detectedGame : game.Text;
-        string result;
-        if (!custom.TryGetValue(NormalizeQuestion(text), out result))
+        var result = GameReply(text, gameName);
+        if (result == null && !custom.TryGetValue(NormalizeQuestion(text), out result))
             result = Suggest(text, gameName, requestsEnabled) ?? FindSavedAnswer(text, custom);
         if (result != null) { await ShowReply(result, test); return; }
         if (!useAi.Checked)
@@ -312,6 +312,7 @@ internal sealed class ChatReplies : UserControl
                 "<|im_start|>user\n" + data + "<|im_end|>\n<|im_start|>assistant\n";
             var output = CleanAiReply(await Task.Run(() => RunModel(prompt)), text);
             if (IsDisposed || session != liveSession || (!test && !enabled.Checked)) return;
+            if (output != null && Regex.IsMatch(output.Trim(), @"\A#?\d+[.!]?\z")) output = null;
             if (output != null && !string.IsNullOrWhiteSpace(gameName) &&
                 output.IndexOf(gameName.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) output = null;
             if (output != null)
@@ -482,9 +483,17 @@ internal sealed class ChatReplies : UserControl
         if (message.StartsWith("spielt der bot spotify")) return "Spotify wird für Musikwünsche genutzt, wenn Spotify als Musikquelle eingestellt ist.";
         if (Regex.IsMatch(message, @"\A(?:hey+|hallo|hi|moin|servus|guten (?:morgen|tag|abend))[\s!.]*\z"))
             return "Hi, willkommen im LIVE!";
-        if (Regex.IsMatch(message, @"\b(?:wie hei[ßs]t (?:das|dein|dieses) spiel|was (?:ist das für ein spiel|spielst du)|welches (?:spiel|game)|wie hei[ßs]t (?:das|dein) game)\b"))
-            return string.IsNullOrWhiteSpace(game) ? "Der Spielname ist hier gerade nicht hinterlegt. Frag am besten den Streamer." : "Das Spiel heißt " + game.Trim() + ".";
-        return null;
+        return GameReply(text, game);
+    }
+
+    internal static string GameReply(string text, string game)
+    {
+        var message = Regex.Replace(text.Trim().ToLowerInvariant(), @"\s+", " ");
+        if (!Regex.IsMatch(message, @"\b(?:wie (?:hei[ßs]t|nennt sich) (?:das|dein|dieses) (?:spiel|game)|" +
+            @"was (?:ist (?:das |das denn )?für ein (?:spiel|game)|(?:spielst|zockst) (?:du|ihr))|" +
+            @"welche[sr]? (?:spiel|spiele|game)\b|was für (?:ein(?:e)? )?(?:spiel|spiele|game)\b)"))
+            return null;
+        return string.IsNullOrWhiteSpace(game) ? "Ich habe gerade keinen Spielnamen. Frag am besten den Streamer." : "Das Spiel heißt " + game.Trim() + ".";
     }
 
     internal static string GiftThanks(string name, string gift, int count)
