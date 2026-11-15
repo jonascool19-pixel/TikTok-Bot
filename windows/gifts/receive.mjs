@@ -24,6 +24,14 @@ export function parseGift(event, roomId, seen, catalog = new Map()) {
     };
 }
 
+export function parseAudience(event, roomId) {
+    if (nonzero(event.common?.roomId) && String(event.common.roomId) !== String(roomId)) return null;
+    const value = event.total;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null;
+    const count = Number(value);
+    return Number.isSafeInteger(count) && count >= 0 ? { kind: 'audience', count } : null;
+}
+
 async function run(handle) {
     if (!/^[a-zA-Z0-9_.]{1,64}$/.test(handle)) process.exit(2);
     const connection = new TikTokLiveConnection(handle, {
@@ -43,6 +51,11 @@ async function run(handle) {
     });
     connection.on(ControlEvent.DISCONNECTED, () => { if (connected) finish('disconnected'); });
     connection.on(WebcastEvent.STREAM_END, () => { if (connected) finish('disconnected'); });
+    connection.on(WebcastEvent.ROOM_USER, event => {
+        if (!connected) return;
+        const audience = parseAudience(event, connection.roomId);
+        if (audience) emit(audience);
+    });
     connection.on(WebcastEvent.GIFT, event => {
         if (!connected) return;
         const gift = parseGift(event, connection.roomId, seen, catalog);

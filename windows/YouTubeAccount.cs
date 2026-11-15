@@ -16,6 +16,8 @@ internal sealed class YouTubeAccount : UserControl
     private const string Redirect = "http://127.0.0.1:43822/";
     private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
     private readonly string path;
+    private readonly string clientPath;
+    private readonly Button setup = new Button { Text = "Google einrichten", AutoSize = true };
     private readonly Button connect = new Button { Text = "Konto anmelden", AutoSize = true };
     private readonly Button check = new Button { Text = "Konto prüfen", AutoSize = true };
     private readonly Label status = new Label { AutoSize = true, Text = "Google-Konto: nicht verbunden" };
@@ -25,44 +27,59 @@ internal sealed class YouTubeAccount : UserControl
     internal YouTubeAccount(string directory)
     {
         path = Path.Combine(directory, "youtube-google-session.txt");
+        clientPath = Path.Combine(directory, "youtube-desktop-client.txt");
         var row = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(4) };
-        row.Controls.AddRange(new Control[] { connect, check, status });
+        row.Controls.AddRange(new Control[] { connect, setup, check, status });
         Controls.Add(row);
+        setup.Click += delegate { ImportClient(); };
         connect.Click += async delegate { await ChangeAccount(true); };
         check.Click += async delegate { await ChangeAccount(false); };
         VisibleChanged += async delegate { if (Visible) await ChangeAccount(false); };
     }
 
+    private void ImportClient()
+    {
+        try
+        {
+            using (var picker = new OpenFileDialog { Title = "Google-OAuth-Datei vom Typ Desktop-App auswählen", Filter = "Google OAuth-Client (*.json)|*.json" })
+            {
+                if (picker.ShowDialog(this) != DialogResult.OK) return;
+                if (new FileInfo(picker.FileName).Length > 65536) throw new InvalidDataException();
+                var document = json.Deserialize<ClientDocument>(File.ReadAllText(picker.FileName));
+                if (document == null || !ValidClient(document.installed)) throw new InvalidDataException();
+                document.installed.refresh_token = null;
+                SavedCredential.Write(clientPath, json.Serialize(document.installed), ok =>
+                    status.Text = ok ? "Google eingerichtet. Klicke auf Konto anmelden." : "Google-Client konnte nicht gespeichert werden.");
+            }
+        }
+        catch (Exception error)
+        {
+            status.Text = "Google-Client-JSON vom Typ Desktop-App erforderlich.";
+            ErrorLog.Write("YouTube-Konto", "Google-Client konnte nicht eingerichtet werden.", error);
+        }
+    }
+
+    private static bool ValidClient(DesktopClient desktop)
+    {
+        return desktop != null && !string.IsNullOrWhiteSpace(desktop.client_id) &&
+            desktop.client_id.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(desktop.client_secret);
+    }
+
     private async Task ChangeAccount(bool authorize)
     {
         if (!connect.Enabled || IsDisposed) return;
-        connect.Enabled = check.Enabled = false;
+        setup.Enabled = connect.Enabled = check.Enabled = false;
         try
         {
-            DesktopClient desktop;
-            if (authorize)
+            var stored = authorize ? SavedCredential.Read(clientPath) ?? SavedCredential.Read(path) : SavedCredential.Read(path);
+            if (stored == null)
             {
-                using (var picker = new OpenFileDialog { Title = "Google Desktop-OAuth-Client auswählen", Filter = "Google OAuth-Client (*.json)|*.json" })
-                {
-                    if (picker.ShowDialog(this) != DialogResult.OK) return;
-                    if (new FileInfo(picker.FileName).Length > 65536) throw new InvalidDataException();
-                    var document = json.Deserialize<ClientDocument>(File.ReadAllText(picker.FileName));
-                    desktop = document == null ? null : document.installed;
-                }
-            }
-            else
-            {
-                var stored = SavedCredential.Read(path);
-                if (stored == null) { status.Text = "Google-Konto: nicht verbunden"; return; }
-                desktop = json.Deserialize<DesktopClient>(stored);
-            }
-            if (desktop == null || string.IsNullOrWhiteSpace(desktop.client_id) ||
-                !desktop.client_id.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(desktop.client_secret))
-            {
-                status.Text = "Google-Client-JSON vom Typ Desktop-App erforderlich.";
+                status.Text = authorize ? "Bitte zuerst Google einrichten." : "Google-Konto: nicht verbunden";
                 return;
             }
+            var desktop = json.Deserialize<DesktopClient>(stored);
+            if (!ValidClient(desktop)) throw new InvalidDataException();
             var fields = new Dictionary<string, string> { { "client_id", desktop.client_id }, { "client_secret", desktop.client_secret } };
             if (authorize)
             {
@@ -110,7 +127,7 @@ internal sealed class YouTubeAccount : UserControl
             status.Text = "Google-Verbindung nicht bestätigt. Details im Fehlerlog.";
             ErrorLog.Write("YouTube-Konto", "Google-Freigabe oder YouTube-API-Prüfung fehlgeschlagen.", error);
         }
-        finally { if (!IsDisposed) connect.Enabled = check.Enabled = true; }
+        finally { if (!IsDisposed) setup.Enabled = connect.Enabled = check.Enabled = true; }
     }
 
     private async Task<string> GetCode(string clientId, string verifier)

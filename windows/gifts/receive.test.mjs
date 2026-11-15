@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseGift } from './receive.mjs';
+import { parseGift, parseAudience } from './receive.mjs';
 
 const seen = new Set();
 const event = {
@@ -22,3 +22,7 @@ assert.deepEqual(parseGift({
 }, '10', seen, new Map([['43', { name: 'Stern', type: 2 }]])), {
     kind: 'gift', name: 'leo', title: 'Stern', count: 1
 });
+assert.deepEqual(parseAudience({ common: { roomId: '10' }, total: '72', totalUser: '150' }, '10'), { kind: 'audience', count: 72 });
+assert.deepEqual(parseAudience({ total: '0' }, '10'), { kind: 'audience', count: 0 });
+assert.equal(parseAudience({ common: { roomId: '20' }, total: '72' }, '10'), null);
+assert.equal(parseAudience({ totalUser: '150' }, '10'), null);

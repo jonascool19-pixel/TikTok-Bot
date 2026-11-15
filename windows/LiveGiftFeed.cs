@@ -15,6 +15,7 @@ internal sealed class LiveGiftFeed : IDisposable
     private Process worker;
     private string target;
     private bool disposed;
+    internal event Action<int?> AudienceChanged;
 
     internal LiveGiftFeed(Control owner, Action<string, string, int> onGift)
     {
@@ -94,6 +95,9 @@ internal sealed class LiveGiftFeed : IDisposable
             case "catalog-error": ErrorLog.Write("Geschenke", "Geschenkkatalog konnte nicht geladen werden."); break;
             case "timeout":
             case "error": ErrorLog.Write("Geschenke", "TikTok-LIVE-Ereignisverbindung fehlgeschlagen. Verbindung wird erneut versucht."); break;
+            case "audience":
+                if (message.count >= 0 && AudienceChanged != null) AudienceChanged(message.count);
+                break;
             case "gift":
                 if (!string.IsNullOrWhiteSpace(message.name) && message.name.Length <= 80 &&
                     !string.IsNullOrWhiteSpace(message.title) && message.title.Length <= 80)
@@ -110,6 +114,7 @@ internal sealed class LiveGiftFeed : IDisposable
         var process = worker;
         worker = null;
         if (process == null) return;
+        if (AudienceChanged != null) AudienceChanged(null);
         try { process.StandardInput.Close(); }
         catch (InvalidOperationException) { }
         catch (IOException) { }

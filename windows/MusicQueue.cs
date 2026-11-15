@@ -32,13 +32,17 @@ internal sealed class MusicQueue : UserControl
     private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, Multiline = true, Height = 26, AccessibleName = "Nachricht für den LIVE-Chat" };
     private readonly Timer reminders = new Timer { Interval = 900000 };
     private readonly Func<bool> chatAvailable;
-    private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
+    private readonly MusicCommands commands;
+    private string Hint { get { return "Du kannst dir Musik wünschen: " + commands.Wish + " Künstler – Titel"; } }
     internal bool RequestsEnabled { get { return collect.Checked; } }
     internal event Action<string> WishAdded;
     internal Func<string, Task<string>> SendChoice;
 
-    internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved)
+    internal MusicQueue(Func<bool> chatAvailable, string directory, Action<bool> saved, MusicCommands commands)
     {
+        this.commands = commands;
+        collect.Text = commands.Wish + " aus LIVE-Chat übernehmen";
+        commands.Changed += delegate { collect.Text = commands.Wish + " aus LIVE-Chat übernehmen"; ResetChoices(); };
         this.chatAvailable = chatAvailable;
         pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Fill };
         youtubeMusicPlayer = new YouTubeQueue(directory, true) { Dock = DockStyle.Fill };
@@ -177,20 +181,15 @@ internal sealed class MusicQueue : UserControl
         bind("youtube-music-use-desktop", usePear);
     }
 
-    internal static bool IsMusicCommand(string text)
-    {
-        return Regex.IsMatch(text.TrimStart(), @"\A(?:#musikwunsch|#antwort|!song|!wunsch)(?:\s|$)", RegexOptions.IgnoreCase);
-    }
-
     internal async Task<bool> ConsiderRequest(string handle, string name, string message)
     {
-        if (!collect.Checked) return IsMusicCommand(message);
+        if (!collect.Checked) return commands.IsCommand(message);
         var handleKey = string.IsNullOrEmpty(handle) ? "" : "@" + handle;
         var nameKey = string.IsNullOrWhiteSpace(name) ? "" : "name:" + name.Trim();
-        var selection = Regex.Match(message.Trim(), @"\A(?:#Antwort\s+)?([123])\z", RegexOptions.IgnoreCase);
+        var selection = MusicCommands.Selection(message, commands.Answer);
         if (selection.Success)
         {
-            var code = selection.Groups[1].Value;
+
             var key = handleKey.Length > 0 && choices.ContainsKey(handleKey) ? handleKey : nameKey;
             Choice choice;
             if (choices.TryGetValue(key, out choice) && choice.Expires > DateTime.UtcNow)
@@ -205,8 +204,8 @@ internal sealed class MusicQueue : UserControl
                 return true;
             }
         }
-        var match = Regex.Match(message.Trim(), @"\A(?:#musikwunsch|!song|!wunsch)\s+(.{2,150})\z", RegexOptions.IgnoreCase);
-        if (!match.Success) return IsMusicCommand(message);
+        var match = MusicCommands.Match(message, MusicCommands.WishPattern(commands.Wish) + @"\s+(.{2,150})\z");
+        if (!match.Success) return commands.IsCommand(message);
         var title = match.Groups[1].Value.Trim();
         if (title.Length < 2) return true;
         if (AddWish(title, false) == false && requests.Items.Count >= 100) return true;
@@ -320,9 +319,15 @@ internal sealed class MusicQueue : UserControl
         choices[key] = new Choice { Remote = localTracks == null ? options : null, Tracks = localTracks, Expires = DateTime.UtcNow.AddMinutes(3) };
         var addressee = string.IsNullOrEmpty(handle) ? nameKey.Substring(5) : "@" + handle;
         var header = string.IsNullOrEmpty(handle) ? LimitChatText(addressee, 42) : addressee;
-        var max = (150 - header.Length - options.Length * ("#Antwort 1 = ".Length + 3)) / options.Length;
+        var optionPrefix = commands.Answer + " ";
+        if (150 - header.Length - options.Length * (optionPrefix.Length + 7) < options.Length * 8)
+        {
+            header += " " + commands.Answer;
+            optionPrefix = "";
+        }
+        var max = (150 - header.Length - options.Length * (optionPrefix.Length + 7)) / options.Length;
         var lines = options.Select((item, index) =>
-            "#Antwort " + (index + 1) + " = " + LimitChatText(Regex.Replace(item.Title, @"\s+", " ").Trim(), max)).ToArray();
+            optionPrefix + (index + 1) + " = " + LimitChatText(Regex.Replace(item.Title, @"\s+", " ").Trim(), max)).ToArray();
         var question = header + Environment.NewLine + string.Join(Environment.NewLine, lines);
         prompt.Text = question;
         if (SendChoice == null) return;

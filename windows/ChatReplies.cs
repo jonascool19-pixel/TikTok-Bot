@@ -52,8 +52,11 @@ internal sealed class ChatReplies : UserControl
     private int liveSession;
     private Dictionary<string, string> custom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    internal ChatReplies(Func<bool> requestsEnabled, string directory, Action<bool> saved)
+    private readonly MusicCommands commands;
+
+    internal ChatReplies(Func<bool> requestsEnabled, string directory, Action<bool> saved, MusicCommands commands)
     {
+        this.commands = commands;
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(12), Tag = "card" };
         var example = new ThemeComboBox { Width = 290, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Beispiel auswählen" };
         example.Items.Add("Beispiel auswählen …");
@@ -272,7 +275,7 @@ internal sealed class ChatReplies : UserControl
     private async Task Reply(string text, bool requestsEnabled, bool test)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        if (MusicQueue.IsMusicCommand(text))
+        if (commands.IsCommand(text))
         {
             if (test) status.Text = "Dieser Befehl wird unter Musik verarbeitet.";
             return;
@@ -280,7 +283,7 @@ internal sealed class ChatReplies : UserControl
         var gameName = autoGame.Checked && !string.IsNullOrWhiteSpace(detectedGame) ? detectedGame : game.Text;
         var result = GameReply(text, gameName);
         if (result == null && !custom.TryGetValue(NormalizeQuestion(text), out result))
-            result = Suggest(text, gameName, requestsEnabled) ?? FindSavedAnswer(text, custom);
+            result = Suggest(text, gameName, requestsEnabled, commands.Wish, commands.Answer) ?? FindSavedAnswer(text, custom);
         if (result != null) { await ShowReply(result, test); return; }
         if (!useAi.Checked)
         {
@@ -457,7 +460,7 @@ internal sealed class ChatReplies : UserControl
         status.Text = "Antwortvorschlag bereit.";
     }
 
-    internal static string Suggest(string text, string game, bool requestsEnabled = false)
+    internal static string Suggest(string text, string game, bool requestsEnabled = false, string wishCommand = MusicCommands.DefaultWish, string answerCommand = MusicCommands.DefaultAnswer)
     {
         var message = text.Trim().ToLowerInvariant();
         if (Regex.IsMatch(message, @"\A(?:(?:na|hey|hallo|hi)[,!.]?\s+)?(?:wie geht(?: es|['’]?s)(?: dir| euch)?(?: heute)?|alles (?:gut|klar) bei (?:dir|euch)(?: heute)?)[\s?!.,]*\z"))
@@ -465,13 +468,13 @@ internal sealed class ChatReplies : UserControl
         if (Regex.IsMatch(message, @"\A(?:wie|was|wo|kann|können|warum|welch)"))
         {
             if (Regex.IsMatch(message, @"mehrere (?:treffer|versionen)|zwischen .*versionen"))
-                return "Wenn der Bot mehrere Versionen vorschlägt, antworte mit #Antwort 1, #Antwort 2 oder #Antwort 3.";
+                return "Wenn der Bot mehrere Versionen vorschlägt, antworte mit " + answerCommand + " 1, " + answerCommand + " 2 oder " + answerCommand + " 3.";
             if (Regex.IsMatch(message, @"musikwunsch|musikwünsche|liedwunsch|(?:lied|song|musik|titel).*(?:wünsch|request|vorschlag|abspiel|anmach)|\bwie (?:mach(?:e|t)?|start(?:e|et)?) (?:ich|man) (?:hier )?musik\b"))
             {
                 if (!requestsEnabled) return "Musikwünsche sind in diesem LIVE gerade deaktiviert.";
                 if (Regex.IsMatch(message, @"nicht gefunden|kein treffer"))
                     return "Versuch es mit Künstler und genauem Titel. Der Bot sucht bei der eingestellten Musikquelle.";
-                return "Schreib #Musikwunsch Künstler – Titel in den Chat, zum Beispiel #Musikwunsch Nena – 99 Luftballons.";
+                return "Schreib " + wishCommand + " Künstler – Titel in den Chat, zum Beispiel " + wishCommand + " Nena – 99 Luftballons.";
             }
             if (message.Contains("grüne") && message.Contains("live")) return "Der grüne Punkt bedeutet, dass der Bot den LIVE-Chat mitliest.";
             if (message.Contains("stimmen")) return "Es gibt deutsche Offline-Stimmen wie Kerstin und mehrere Sprechweisen von Thorsten.";

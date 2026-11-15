@@ -18,6 +18,9 @@ internal sealed class LiveStats : UserControl
     private readonly ListView ranking = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true };
     private string room;
     private string audience;
+    private int? eventAudience;
+    private DateTime eventUpdated;
+    private readonly Timer audienceTimer = new Timer { Interval = 5000 };
     private int total;
 
     internal LiveStats()
@@ -27,6 +30,8 @@ internal sealed class LiveStats : UserControl
         ranking.Columns.Add("Erster Kommentar", 155);
         ranking.Columns.Add("Letzter Kommentar", 155);
         Controls.AddRange(new Control[] { ranking, summary });
+        audienceTimer.Tick += delegate { if (eventAudience.HasValue && DateTime.UtcNow - eventUpdated >= TimeSpan.FromMinutes(1)) SetEventAudience(null); };
+        Disposed += delegate { audienceTimer.Dispose(); };
         Render();
     }
 
@@ -35,6 +40,8 @@ internal sealed class LiveStats : UserControl
         if (target == null || string.Equals(room, target, StringComparison.OrdinalIgnoreCase)) return;
         room = target;
         audience = null;
+        eventAudience = null;
+        audienceTimer.Stop();
         total = 0;
         viewers.Clear();
         Render();
@@ -45,6 +52,16 @@ internal sealed class LiveStats : UserControl
         if (audience == value) return;
         audience = value;
         Render();
+    }
+
+    internal void SetEventAudience(int? value)
+    {
+        if (IsDisposed) return;
+        var changed = eventAudience != value;
+        eventAudience = value;
+        eventUpdated = DateTime.UtcNow;
+        audienceTimer.Enabled = value.HasValue;
+        if (changed) Render();
     }
 
     internal void Record(string handle, string name)
@@ -67,7 +84,7 @@ internal sealed class LiveStats : UserControl
 
     private void Render()
     {
-        summary.Text = "Zuschauer laut TikTok: " + (audience ?? "nicht verfügbar") +
+        summary.Text = "Aktuelle Zuschauer laut TikTok: " + (eventAudience.HasValue ? eventAudience.Value.ToString("N0") : audience ?? "nicht verfügbar") +
             "    Erkannte Chatkonten: " + viewers.Count + "    Kommentare: " + total +
             Environment.NewLine + "Verweildauer, eindeutige Gesamtzuschauer und Geschenke: keine verlässlichen Daten aus der LIVE-Ansicht.";
         ranking.BeginUpdate();

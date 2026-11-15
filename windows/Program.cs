@@ -102,8 +102,9 @@ internal sealed class BotWindow : Form
             }
             if (browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(target);
         };
-        var music = new MusicQueue(() => comments.ChatAvailable, data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
-        var replies = new ChatReplies(() => music.RequestsEnabled, data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
+        var commands = new MusicCommands(data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
+        var music = new MusicQueue(() => comments.ChatAvailable, data, ShowSettingsFeedback, commands) { Dock = DockStyle.Fill };
+        var replies = new ChatReplies(() => music.RequestsEnabled, data, ShowSettingsFeedback, commands) { Dock = DockStyle.Fill };
         BindSetting("mute-live", muteLive);
         music.BindSettings(BindSetting);
         replies.BindSettings(BindSetting);
@@ -205,6 +206,7 @@ internal sealed class BotWindow : Form
         statsTab.Controls.Add(stats);
         comments.ViewerActivity += stats.Record;
         comments.AudienceChanged += stats.SetAudience;
+        gifts.AudienceChanged += stats.SetEventAudience;
         browser.NavigationStarting += (sender, args) =>
         {
             if (IsAllowedRoom(args.Uri, watchedRoom)) stats.SetRoom(watchedRoom);
@@ -368,7 +370,9 @@ internal sealed class BotWindow : Form
         var speechFilters = new SpeechFilters(data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
         comments.ShouldReadComment = speechFilters.ShouldRead;
         speechTab.Controls.Add(speechFilters);
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, helpTab };
+        var commandsTab = new TabPage("Befehle");
+        commandsTab.Controls.Add(commands);
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, commandsTab, helpTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -573,7 +577,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
-                            SpeechFilters.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
+                            SpeechFilters.Verify(data) && MusicCommands.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
@@ -649,9 +653,11 @@ internal sealed class BotWindow : Form
             RunningGame.ParseSteamTitle(@"""name"" ""Euro Truck Simulator 2""") == "Euro Truck Simulator 2" &&
             RunningGame.TitleFromExecutable(@"D:\GOG Games\Testspiel\game.exe", "Testspiel", "", "") == "Testspiel" &&
             RunningGame.TitleFromExecutable(@"D:\Games\EGS\Launcher.exe", "Launcher", "", "") == "" &&
-            MusicQueue.IsMusicCommand("  #Musikwunsch Motor Town") &&
-            MusicQueue.IsMusicCommand("#Antwort 2") &&
-            !MusicQueue.IsMusicCommand("Wie geht ein Musikwunsch?") &&
+            MusicCommands.IsCommand("  #Musikwunsch Motor Town", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.Selection("#antwort 2", MusicCommands.DefaultAnswer).Groups[1].Value == "2" &&
+            MusicCommands.Selection("#\u200B antwort\u00A02", MusicCommands.DefaultAnswer).Groups[1].Value == "2" &&
+            MusicCommands.Selection("#Wahl 3", "#wahl").Groups[1].Value == "3" &&
+            !MusicCommands.IsCommand("Wie geht ein Musikwunsch?", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
             ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
             ChatReplies.GameReply("Was ist das denn für ein Spiel?", "Motor Town") == "Das Spiel heißt Motor Town." &&
             ChatReplies.GameReply("Was für Spiele spielst du?", "Euro Truck Simulator 2") == "Das Spiel heißt Euro Truck Simulator 2." &&
