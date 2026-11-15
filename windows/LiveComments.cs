@@ -68,73 +68,6 @@ internal sealed class LiveComments : UserControl
 })()";
 
     private readonly CheckBox readGifts = new CheckBox { Text = "Geschenke ansagen und danken", AutoSize = true };
-    private const string ReadGifts = @"
-(() => {
-    const root = document.querySelector('[data-e2e=""live-chat-container""], [data-e2e=""chat-room""]');
-    if (!root) return [];
-    const previous = window.__ttbGiftRows;
-    if (previous && previous.root === root) return previous.pending.splice(0);
-    if (previous) previous.observer.disconnect();
-    const seen = new WeakMap();
-    const pending = [];
-    const rowSelector = '[data-e2e=""gift-message""], [data-e2e=""live-gift-message""], [data-e2e=""gift-chat-message""], [data-e2e=""live-chat-gift""], [data-e2e=""gift-notice""], [data-e2e=""live-gift-notice""], [data-message-type=""gift""]';
-    const giftSelector = '[data-e2e=""gift-name""], [data-e2e=""gift-title""], [data-e2e=""live-gift-name""]';
-    const iconSelector = 'img[data-e2e=""gift-icon""][alt], [data-e2e=""gift-image""] img[alt], img[data-e2e=""gift-image""][alt]';
-    const textRowSelector = '[data-e2e=""chat-message""], [data-e2e=""chat-notice""], [role=""listitem""]';
-    const markerSelector = rowSelector + ', ' + giftSelector + ', ' + iconSelector + ', ' + textRowSelector;
-    function scan(node, fresh) {
-        if (node.nodeType !== 1) return;
-        const rows = new Set();
-        const ancestor = node.closest(rowSelector + ', ' + textRowSelector);
-        if (ancestor) rows.add(ancestor);
-        const markers = Array.from(node.querySelectorAll(markerSelector));
-        if (node.matches(markerSelector)) markers.unshift(node);
-        for (const marker of markers) {
-            const row = marker.closest(rowSelector) || marker.closest(textRowSelector);
-            if (row) rows.add(row);
-        }
-        for (const row of rows) {
-            const sender = row.querySelector('[data-e2e=""gift-sender-name""], [data-e2e=""message-owner-name""], a[href^=""/@""]');
-            const gift = row.querySelector(giftSelector);
-            const icon = row.querySelector(iconSelector);
-            const name = ((sender && sender.textContent.trim()) || row.getAttribute('data-sender-name') || '').slice(0,80);
-            const text = name && row.textContent.trim();
-            const notice = text && text.startsWith(name) && text.slice(name.length).trim();
-            const label = notice && notice.match(/^(?:sent\s+(?:(?:a|an)\s+)?(?:a gift\s*[:–-]\s*)?|hat\s+(?:ein Geschenk\s*[:–-]\s*)?)(.{1,80}?)(?:\s+geschickt|\s+gesendet)?(?:\s*[×x]\s*(\d+))?\s*[.!]?$/i);
-            const plainIcon = row.querySelector('img[alt]:not([alt=""""])');
-            const messageBody = row.querySelector('.break-words.align-middle');
-            const structured = row.matches(rowSelector) || gift || icon;
-            if (!structured && (!root.contains(row) || messageBody || !label || !plainIcon || (/^hat\s/i.test(notice) && !/\b(geschickt|gesendet|Geschenk)\b/i.test(notice)))) continue;
-            const title = ((gift && gift.textContent.trim()) || (icon && icon.alt.trim()) ||
-                (label && label[1]) ||
-                row.getAttribute('data-gift-name') || '').slice(0,80);
-            if (!name || !title) continue;
-            const countText = row.getAttribute('data-gift-count') ||
-                row.querySelector('[data-e2e=""gift-count""]')?.textContent || (label && label[2]) || '';
-            const count = Math.min(9999, Number(countText.match(/\d+/)?.[0]) || 1);
-            const key = JSON.stringify([name,title,count]);
-            if (fresh && seen.get(row) !== key && pending.length < 100) pending.push({Name:name, Title:title, Count:count});
-            seen.set(row,key);
-        }
-    }
-    scan(root,false);
-    // Gift banners can be siblings of the chat, and may disappear between polls.
-    document.querySelectorAll(rowSelector).forEach(row => scan(row,false));
-    const observer = new MutationObserver(records => {
-        for (const record of records) {
-            const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-            const row = target && target.closest(rowSelector + ', ' + textRowSelector);
-            if (row) scan(row, true);
-            if (record.type === 'childList')
-                for (const node of record.addedNodes) scan(node,true);
-        }
-    });
-    observer.observe(document.body, {subtree:true, childList:true, characterData:true, attributes:true,
-        attributeFilter:['data-e2e','data-message-type','data-sender-name','data-gift-name','data-gift-count','alt']});
-    window.__ttbGiftRows = {root, observer, pending};
-    return [];
-})()";
-
     internal LiveComments()
     {
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
@@ -286,23 +219,10 @@ internal sealed class LiveComments : UserControl
             "document.querySelector('[data-e2e=chat-room]').appendChild(row);");
         var added = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         var repeated = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
-        await core.ExecuteScriptAsync(ReadGifts);
-        await core.ExecuteScriptAsync("document.querySelector('[data-e2e=chat-room]').insertAdjacentHTML('beforeend', " +
-            "\"<div data-e2e='gift-message'><b data-e2e='gift-sender-name'>Alex</b><span data-e2e='gift-name'>Rose</span></div>\");");
-        var gifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
-        var repeatedGifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
-        await core.ExecuteScriptAsync("document.querySelector('[data-e2e=chat-room]').insertAdjacentHTML('beforeend', " +
-            "\"<div data-e2e='live-chat-gift'><a href='/@sam'>Sam</a><img data-e2e='gift-icon' alt='Stern'></div>\");");
-        await core.ExecuteScriptAsync("document.body.insertAdjacentHTML('beforeend', " +
-            "\"<div data-e2e='live-gift-notice' data-sender-name='Kim' data-gift-name='Rose' data-gift-count='3'></div>\");" +
-            "queueMicrotask(() => document.querySelector('[data-e2e=live-gift-notice]').remove());");
-        var iconGifts = serializer.Deserialize<List<Gift>>(await core.ExecuteScriptAsync(ReadGifts));
         return initial != null && initial.Count == 0 && added != null && added.Count == 1 &&
             added[0].Name == "Zuschauer" && added[0].Text == "Wie heißt das Spiel?" &&
-            repeated != null && repeated.Count == 0 && gifts.Count == 1 && repeatedGifts.Count == 0 &&
-            iconGifts.Count == 2 && iconGifts[0].Name == "Sam" && iconGifts[0].Title == "Stern" &&
-            iconGifts[1].Name == "Kim" && iconGifts[1].Count == 3 &&
-            GiftAnnouncement(gifts[0].Name, gifts[0].Title) == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
+            repeated != null && repeated.Count == 0 &&
+            GiftAnnouncement("Alex", "Rose") == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
     }
 
     private async void Poll(object sender, EventArgs args)
@@ -332,16 +252,6 @@ internal sealed class LiveComments : UserControl
             var playback = json.Deserialize<double?>(playbackResult);
             var progressing = IsPlaybackAdvancing(lastPlayback, playback);
             lastPlayback = playback;
-            var giftResult = await browser.ExecuteScriptAsync(ReadGifts);
-            if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
-            foreach (var gift in json.Deserialize<List<Gift>>(giftResult))
-            {
-                var announcement = GiftAnnouncement(gift.Name, gift.Title, gift.Count);
-                if (history.Items.Count == 200) history.Items.RemoveAt(0);
-                history.Items.Add(announcement);
-                history.TopIndex = history.Items.Count - 1;
-                if (readGifts.Checked) Speak(announcement, true);
-            }
             if (!progressing)
             {
                 SetConnection(false);
@@ -393,11 +303,13 @@ internal sealed class LiveComments : UserControl
         return name + " hat ein Geschenk geschickt: " + (count > 1 ? count + " mal " : "") + title + ". " + ChatReplies.GiftThanks(name, title, Math.Max(1, count));
     }
 
-    private sealed class Gift
+    internal void AnnounceGift(string name, string title, int count)
     {
-        public string Name { get; set; }
-        public string Title { get; set; }
-        public int Count { get; set; }
+        var announcement = GiftAnnouncement(name, title, count);
+        if (history.Items.Count == 200) history.Items.RemoveAt(0);
+        history.Items.Add(announcement);
+        history.TopIndex = history.Items.Count - 1;
+        if (readGifts.Checked) Speak(announcement, true);
     }
 
     private void Speak(string text, bool gift = false)

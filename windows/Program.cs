@@ -32,6 +32,7 @@ internal static class Program
 internal sealed class BotWindow : Form
 {
     private readonly WebView2 browser = new WebView2();
+    private readonly LiveGiftFeed gifts;
     private readonly LiveComments comments = new LiveComments { Dock = DockStyle.Fill };
     private readonly TextBox room = new TextBox { Width = 275, AccessibleName = "@Name oder LIVE-Link" };
     private readonly Button open = new Button { Text = "LIVE öffnen", AutoSize = true, Enabled = false };
@@ -63,6 +64,7 @@ internal sealed class BotWindow : Form
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TikTok-Bot", "WindowsPrototype");
         ErrorLog.Configure(data);
         comments.LoadVoicePreferences(data);
+        gifts = new LiveGiftFeed(this, comments.AnnounceGift);
         browser.CreationProperties = new CoreWebView2CreationProperties { UserDataFolder = Path.Combine(data, "BotProfile") };
         Text = "TikTok-Bot";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -412,6 +414,7 @@ internal sealed class BotWindow : Form
                 status.Text = "Speichere zuerst ein festes LIVE-Konto über „Streamer ändern“.";
                 return;
             }
+            gifts.Watch(target);
             browser.CoreWebView2.Navigate(target);
         };
         login.Click += async delegate
@@ -479,6 +482,7 @@ internal sealed class BotWindow : Form
                 return;
             }
             SavePreference(Path.Combine(data, "live-monitor.txt"), monitor.Checked.ToString());
+            gifts.Watch(monitor.Checked ? watchedRoom : null);
             if (monitor.Checked && browser.CoreWebView2 != null) browser.CoreWebView2.Navigate(watchedRoom);
         };
         liveTimer.Tick += delegate
@@ -497,6 +501,7 @@ internal sealed class BotWindow : Form
     {
         if (!SavePreference(Path.Combine(data, "watched-live.txt"), target)) return false;
         watchedRoom = target;
+        gifts.Watch(monitor.Checked ? target : null);
         comments.SetConnection(false);
         return true;
     }
@@ -619,7 +624,11 @@ internal sealed class BotWindow : Form
             open.Enabled = login.Enabled = true;
             status.Text = "Öffne deinen LIVE oder melde das Bot-Konto an.";
             liveTimer.Start();
-            if (watchedRoom != null && monitor.Checked) core.Navigate(watchedRoom);
+            if (watchedRoom != null && monitor.Checked)
+            {
+                gifts.Watch(watchedRoom);
+                core.Navigate(watchedRoom);
+            }
         }
         catch (Exception error)
         {
@@ -860,6 +869,7 @@ internal sealed class BotWindow : Form
     {
         if (disposing)
         {
+            gifts.Dispose();
             accountTimer.Dispose();
             liveTimer.Dispose();
         }

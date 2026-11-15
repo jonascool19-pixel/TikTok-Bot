@@ -16,6 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+          architecture: x64
       - name: Build and verify setup
         shell: pwsh
         env:
@@ -35,6 +39,13 @@ jobs:
           $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
           Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
           Copy-Item -LiteralPath windows/SpotifyControl.ps1 -Destination $app
+          npm ci --prefix windows/gifts --omit=dev --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Gift receiver dependencies could not be installed.' }
+          node windows/gifts/receive.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Gift receiver tests failed.' }
+          $gifts = New-Item -ItemType Directory -Path (Join-Path $app 'gifts')
+          Copy-Item -LiteralPath (Get-Command node.exe).Source -Destination $gifts.FullName
+          Copy-Item -LiteralPath windows/gifts/receive.mjs, windows/gifts/node_modules -Destination $gifts.FullName -Recurse
           $ai = Join-Path $app 'ai'
           $aiZip = Join-Path $env:RUNNER_TEMP 'llama.zip'
           curl.exe --fail --silent --show-error --location --retry 3 -o $aiZip 'https://github.com/ggml-org/llama.cpp/releases/download/b5046/llama-b5046-bin-win-avx2-x64.zip'
@@ -103,6 +114,9 @@ jobs:
           Set-Content -LiteralPath $marker -Value 'existing local data'
           Invoke-CheckedProcess $installer ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATEBOT=1 /TASKS=desktopicon /DIR="{0}"' -f $installed)
           if ((Get-Content -LiteralPath $marker) -ne 'existing local data') { throw 'Setup modified the local profile.' }
+          $giftNode = Join-Path $installed 'gifts/node.exe'
+          $giftScript = Join-Path $installed 'gifts/receive.mjs'
+          Invoke-CheckedProcess $giftNode ('"{0}"' -f $giftScript)
           $exe = Join-Path $installed 'TikTok-Bot.exe'
           $restarted = Get-Process -Name 'TikTok-Bot' -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe
           if (!$restarted) { throw 'The update did not restart TikTok-Bot.' }
