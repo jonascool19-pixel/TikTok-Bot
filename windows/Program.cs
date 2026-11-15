@@ -188,9 +188,9 @@ internal sealed class BotWindow : Form
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
         comments.IsOwnComment = IsOwnComment;
-        comments.ViewerComment += (handle, name, message) =>
+        comments.ViewerComment += async (handle, name, message) =>
         {
-            if (!music.ConsiderRequest(handle, name, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
+            if (!await music.ConsiderRequest(handle, name, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
         musicTab.Controls.Add(music);

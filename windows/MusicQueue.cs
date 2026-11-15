@@ -176,7 +176,7 @@ internal sealed class MusicQueue : UserControl
         bind("youtube-music-use-desktop", usePear);
     }
 
-    internal bool ConsiderRequest(string handle, string name, string message)
+    internal async Task<bool> ConsiderRequest(string handle, string name, string message)
     {
         if (!collect.Checked) return false;
         var handleKey = string.IsNullOrEmpty(handle) ? "" : "@" + handle;
@@ -223,7 +223,7 @@ internal sealed class MusicQueue : UserControl
         else if (tracks.Length > 1)
         {
             var options = tracks.Select(file => new MusicMatch(null, Path.GetFileNameWithoutExtension(file.Name))).ToArray();
-            OfferChoice(handle, nameKey, options, wishSession, tracks);
+            await OfferChoice(handle, nameKey, options, wishSession, tracks);
         }
         else prompt.Text = "Kein lokaler Treffer für „" + title + "“.";
         return true;
