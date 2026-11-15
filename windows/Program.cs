@@ -126,7 +126,7 @@ internal sealed class BotWindow : Form
         toolbar.Controls.AddRange(new Control[] { room, editTarget, open, profile, login });
 
         var notices = new ContextMenuStrip();
-        var bell = new Button { Text = "🔔", Dock = DockStyle.Right, Width = 74, AccessibleName = "Benachrichtigungen" };
+        var bell = new Button { Name = "HeaderNotifications", Text = "🔔", Size = new Size(74, 37), Margin = Padding.Empty, AccessibleName = "Benachrichtigungen" };
         var messages = new System.Collections.Generic.List<Tuple<string>>();
         var unread = 0;
         Action refreshBell = delegate
@@ -175,10 +175,10 @@ internal sealed class BotWindow : Form
             }
             notices.Show(bell, new Point(0, bell.Height));
         };
-        var header = new Panel { Dock = DockStyle.Top, Height = 94, Padding = new Padding(14, 5, 14, 4) };
-        var titleBar = new Panel { Dock = DockStyle.Top, Height = 39 };
+        var header = new Panel { Dock = DockStyle.Top, Height = 98, Padding = new Padding(14, 5, 14, 4) };
+        var titleBar = new Panel { Dock = DockStyle.Top, Height = 43 };
         var brand = new Label { Dock = DockStyle.Fill, Text = "TikTok-Bot", Font = AppTheme.HeadingFont };
-        var restart = new Button { Dock = DockStyle.Right, Width = 108, Text = "Neustart", AccessibleName = "TikTok-Bot neu starten" };
+        var restart = new Button { Name = "HeaderRestart", Size = new Size(108, 37), Margin = new Padding(0, 0, 10, 0), Text = "Neustart", AccessibleName = "TikTok-Bot neu starten" };
         restart.Click += delegate
         {
             try { Application.Restart(); }
@@ -188,9 +188,11 @@ internal sealed class BotWindow : Form
                 status.Text = "Neustart fehlgeschlagen. Details stehen im Fehlerlog.";
             }
         };
-        titleBar.Controls.AddRange(new Control[] { brand, restart });
+        var headerActions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 192, WrapContents = false, Margin = Padding.Empty };
+        headerActions.Controls.AddRange(new Control[] { restart, bell });
+        titleBar.Controls.AddRange(new Control[] { brand, headerActions });
         toolbar.Dock = DockStyle.Fill;
-        header.Controls.AddRange(new Control[] { toolbar, bell, titleBar });
+        header.Controls.AddRange(new Control[] { toolbar, titleBar });
         toolbar.Padding = new Padding(0, 3, 0, 0);
         music.WishAdded += title => notify("Musikwunsch: " + title);
         var tabs = new AppTabs();
@@ -590,7 +592,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
-                            VerifyLoginButton() && SpeechFilters.Verify(data) && MusicCommands.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
+                            VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) && MusicCommands.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
@@ -863,6 +865,15 @@ internal sealed class BotWindow : Form
             return fallback + "TikTok-Sendeversuch fehlgeschlagen.";
         }
         finally { sendingReply = false; }
+    }
+
+    private bool VerifyHeaderActions()
+    {
+        var restart = Controls.Find("HeaderRestart", true)[0];
+        var bell = Controls.Find("HeaderNotifications", true)[0];
+        return restart.Parent == bell.Parent && restart.Top == bell.Top &&
+            restart.Height == bell.Height && bell.Left - restart.Right >= 8 &&
+            bell.Right <= bell.Parent.ClientSize.Width;
     }
 
     private bool VerifyLoginButton()
