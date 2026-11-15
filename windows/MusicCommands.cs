@@ -44,7 +44,9 @@ internal sealed class MusicCommands : UserControl
         layout.Controls.AddRange(new Control[] {
             new Label { Text = "Chatbefehle", AutoSize = true, Font = AppTheme.HeadingFont },
             new Label { Text = "Musikwunsch (danach Künstler und Titel)", AutoSize = true }, wish,
-            new Label { Text = "Titelauswahl (danach 1, 2 oder 3)", AutoSize = true }, answer, save, defaults, status });
+            new Label { Text = "Titelauswahl (danach 1, 2 oder 3)", AutoSize = true }, answer, save, defaults, status,
+            new Label { Text = "Änderungen gelten sofort nach dem Speichern. Bei Bedarf kannst du die App oben rechts neu starten.",
+                AutoSize = true, MaximumSize = new System.Drawing.Size(650, 0) } });
         Controls.Add(layout);
     }
 

@@ -176,9 +176,21 @@ internal sealed class BotWindow : Form
             notices.Show(bell, new Point(0, bell.Height));
         };
         var header = new Panel { Dock = DockStyle.Top, Height = 94, Padding = new Padding(14, 5, 14, 4) };
-        var brand = new Label { Dock = DockStyle.Top, Height = 36, Text = "TikTok-Bot", Font = AppTheme.HeadingFont };
+        var titleBar = new Panel { Dock = DockStyle.Top, Height = 39 };
+        var brand = new Label { Dock = DockStyle.Fill, Text = "TikTok-Bot", Font = AppTheme.HeadingFont };
+        var restart = new Button { Dock = DockStyle.Right, Width = 108, Text = "Neustart", AccessibleName = "TikTok-Bot neu starten" };
+        restart.Click += delegate
+        {
+            try { Application.Restart(); }
+            catch (Exception error)
+            {
+                ErrorLog.Write("Windows-App", "Neustart konnte nicht ausgelöst werden.", error);
+                status.Text = "Neustart fehlgeschlagen. Details stehen im Fehlerlog.";
+            }
+        };
+        titleBar.Controls.AddRange(new Control[] { brand, restart });
         toolbar.Dock = DockStyle.Fill;
-        header.Controls.AddRange(new Control[] { toolbar, bell, brand });
+        header.Controls.AddRange(new Control[] { toolbar, bell, titleBar });
         toolbar.Padding = new Padding(0, 3, 0, 0);
         music.WishAdded += title => notify("Musikwunsch: " + title);
         var tabs = new AppTabs();
