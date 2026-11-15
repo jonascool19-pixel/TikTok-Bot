@@ -592,7 +592,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
-                            VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) && MusicCommands.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
+                            VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) && MusicCommands.Verify(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
@@ -679,6 +679,8 @@ internal sealed class BotWindow : Form
             ChatReplies.GameReply("Was für Spiele spielst du?", "Euro Truck Simulator 2") == "Das Spiel heißt Euro Truck Simulator 2." &&
             ChatReplies.GameReply("Was zockst du gerade?", "Minecraft") == "Das Spiel heißt Minecraft." &&
             ChatReplies.GameReply("Welches Lied läuft?", "Minecraft") == null &&
+            YouTubeMusicControl.VideoId("https://music.youtube.com/watch?v=abcdefghijk") == "abcdefghijk" &&
+            YouTubeMusicControl.ParseSearch(@"{""contents"":[{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Testtitel""}]}}}]}},{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Duplikat""}]}}}]}}]}").Length == 1 &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&

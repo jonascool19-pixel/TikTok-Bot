@@ -44,7 +44,7 @@ internal sealed class YouTubeMusicControl : UserControl
         finally { busy = false; }
     }
 
-    internal async Task<MusicMatch[]> Search(string query)
+    internal async Task<MusicMatch[]> Search(string query, int limit = 3)
     {
         if (busy || token == null) return null;
         busy = true;
@@ -57,7 +57,7 @@ internal sealed class YouTubeMusicControl : UserControl
                 using (var response = await Client.SendAsync(request))
                 {
                     response.EnsureSuccessStatusCode();
-                    return ParseSearch(await response.Content.ReadAsStringAsync());
+                    return ParseSearch(await response.Content.ReadAsStringAsync(), limit);
                 }
             }
         }
@@ -69,11 +69,11 @@ internal sealed class YouTubeMusicControl : UserControl
         finally { busy = false; }
     }
 
-    internal static MusicMatch[] ParseSearch(string json)
+    internal static MusicMatch[] ParseSearch(string json, int limit = 3)
     {
         var serializer = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 };
         return FindTracks(serializer.DeserializeObject(json)).GroupBy(track => track.Id)
-            .Select(group => group.First()).Take(3).ToArray();
+            .Select(group => group.First()).Take(limit).ToArray();
     }
 
     private static IEnumerable<MusicMatch> FindTracks(object node)
@@ -118,19 +118,83 @@ internal sealed class YouTubeMusicControl : UserControl
     {
         var path = Path.Combine(directory, "pear-session.txt");
         token = SavedCredential.Read(path);
-        var controls = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(6) };
-        var check = new Button { Text = "YouTube Music Desktop prüfen", AutoSize = true };
-        var track = new TextBox { Width = 310, MaxLength = 250, AccessibleName = "YouTube Music Titellink" };
-        var add = new Button { Text = "In Desktop-Warteschlange", AutoSize = true };
-        controls.Controls.AddRange(new Control[] { check, track, add, status });
-        Controls.Add(controls);
+        var controls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        var check = new Button { Text = "Pear Desktop verbinden / prüfen", AutoSize = true };
+        var track = new TextBox { Width = 310, MaxLength = 250, AccessibleName = "YouTube-Music-Titel oder Link" };
+        var search = new Button { Text = "Titel suchen", AutoSize = true };
+        var add = new Button { Text = "Zur Desktop-Warteschlange hinzufügen", AutoSize = true };
+        var results = new ListBox { Dock = DockStyle.Fill, DisplayMember = "Title", AccessibleName = "YouTube-Music-Suchergebnisse" };
+        status.AutoSize = false;
+        status.Dock = DockStyle.Top;
+        status.Height = 35;
+        var playback = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(6) };
+        AddPlaybackButton(playback, "Vorheriger Titel", "previous");
+        AddPlaybackButton(playback, "Wiedergabe / Pause", "toggle-play");
+        AddPlaybackButton(playback, "Nächster Titel", "next");
+        controls.Controls.AddRange(new Control[] { check, track, search, add });
+        Controls.AddRange(new Control[] { results, status, controls, playback });
         check.Click += async delegate { await Execute(controls, null, path, saved); };
+        track.TextChanged += delegate { results.Items.Clear(); };
+        search.Click += async delegate
+        {
+            var query = track.Text.Trim();
+            if (query.Length == 0 || busy) return;
+            if (token == null) await Execute(controls, null, path, saved);
+            if (IsDisposed || token == null || query != track.Text.Trim()) return;
+            status.Text = "Suche auf YouTube Music …";
+            var tracks = await Search(query, 12);
+            if (IsDisposed || query != track.Text.Trim()) return;
+            results.Items.Clear();
+            if (tracks == null) { status.Text = "Suche fehlgeschlagen. Prüfe die Pear-Desktop-Verbindung."; return; }
+            results.Items.AddRange(tracks);
+            if (results.Items.Count > 0) results.SelectedIndex = 0;
+            status.Text = tracks.Length == 0 ? "Keine Treffer." : "Wähle einen Titel zum Einreihen.";
+        };
         add.Click += async delegate
         {
-            var id = VideoId(track.Text);
-            if (id == null) { status.Text = "Gib einen YouTube- oder YouTube-Music-Titellink ein."; return; }
+            var selected = results.SelectedItem as MusicMatch;
+            var id = selected == null ? VideoId(track.Text) : selected.Id;
+            if (id == null) { status.Text = "Wähle einen Treffer oder füge einen YouTube-Music-Link ein."; return; }
             await Execute(controls, id, path, saved);
         };
+        results.DoubleClick += delegate { add.PerformClick(); };
+        track.KeyDown += (sender, args) =>
+        {
+            if (args.KeyCode != Keys.Enter) return;
+            args.SuppressKeyPress = true;
+            search.PerformClick();
+        };
+    }
+
+    private void AddPlaybackButton(Control row, string label, string route)
+    {
+        var button = new Button { Text = label, AutoSize = true };
+        button.Click += async delegate
+        {
+            if (busy) return;
+            if (token == null) { status.Text = "Verbinde zuerst Pear Desktop."; return; }
+            busy = true;
+            try
+            {
+                using (var request = new HttpRequestMessage(HttpMethod.Post, Root + "api/v1/" + route))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    using (var response = await Client.SendAsync(request))
+                    {
+                        if ((int)response.StatusCode == 401 || (int)response.StatusCode == 403) token = null;
+                        response.EnsureSuccessStatusCode();
+                    }
+                }
+                if (!IsDisposed) status.Text = "Pear Desktop hat den Wiedergabebefehl angenommen.";
+            }
+            catch (Exception error)
+            {
+                if (!IsDisposed) status.Text = "Wiedergabebefehl fehlgeschlagen. Prüfe die Verbindung.";
+                ErrorLog.Write("YouTube Music", "Pear Desktop konnte die Wiedergabe nicht steuern.", error);
+            }
+            finally { busy = false; }
+        };
+        row.Controls.Add(button);
     }
 
     private async Task Execute(Control controls, string videoId, string path, Action<bool> saved)

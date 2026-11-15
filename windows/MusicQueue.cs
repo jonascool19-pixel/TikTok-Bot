@@ -18,10 +18,7 @@ internal sealed class MusicQueue : UserControl
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
     private readonly ComboBox wishSource = new ThemeComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Quelle für LIVE-Musikwünsche" };
-    private readonly YouTubeQueue youtubeMusicPlayer;
     private readonly YouTubeMusicControl pear;
-    private readonly CheckBox usePear = new CheckBox { Text = "LIVE-Wünsche an Pear Desktop senden", AutoSize = true, Dock = DockStyle.Top };
-    private readonly YouTubeQueue youtube;
     private readonly SpotifyQueueControl spotifyQueueControl;
     private readonly Queue<RemoteWish> remotePending = new Queue<RemoteWish>();
     private int wishSession;
@@ -45,9 +42,7 @@ internal sealed class MusicQueue : UserControl
         commands.Changed += delegate { collect.Text = commands.Wish + " aus LIVE-Chat übernehmen"; ResetChoices(); };
         this.chatAvailable = chatAvailable;
         pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Fill };
-        youtubeMusicPlayer = new YouTubeQueue(directory, true) { Dock = DockStyle.Fill };
-        youtube = new YouTubeQueue(directory) { Dock = DockStyle.Fill };
-        wishSource.Items.AddRange(new object[] { "Lokale Dateien", "Spotify", "YouTube Music", "YouTube" });
+        wishSource.Items.AddRange(new object[] { "Lokale Dateien", "Spotify", "YouTube Music" });
         var sourcePath = Path.Combine(directory, "music-wish-source.txt");
         wishSource.SelectedIndex = 0;
         try
@@ -55,6 +50,7 @@ internal sealed class MusicQueue : UserControl
             if (File.Exists(sourcePath))
             {
                 var savedSource = File.ReadAllText(sourcePath).Trim();
+                if (savedSource == "YouTube") savedSource = "YouTube Music";
                 if (wishSource.Items.Contains(savedSource)) wishSource.SelectedItem = savedSource;
             }
             else
@@ -140,14 +136,7 @@ internal sealed class MusicQueue : UserControl
         var remote = new TabPage("Spotify und Musikwünsche");
         remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus });
         var youtubeMusic = new TabPage("YouTube Music");
-        var musicModes = new AppTabs();
-        var builtIn = new TabPage("Player im Bot");
-        var desktop = new TabPage("Desktop-App");
-        builtIn.Controls.Add(youtubeMusicPlayer);
-        desktop.Controls.AddRange(new Control[] { pear, usePear });
-        musicModes.AddPages(builtIn, desktop);
-        youtubeMusic.Controls.Add(musicModes);
-        usePear.CheckedChanged += delegate { ResetChoices(); };
+        youtubeMusic.Controls.Add(pear);
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
         spotifyQueue.Controls.Add(spotifyQueueControl);
         AddButton(searchTools, "Wunsch in Spotify-Warteschlange", async delegate
@@ -159,9 +148,8 @@ internal sealed class MusicQueue : UserControl
             if (uri != null) await spotifyQueueControl.Enqueue(uri);
             else await spotifyQueueControl.ShowSearch(title);
         });
-        var youtubeTab = new TabPage("YouTube");
-        youtubeTab.Controls.Add(youtube);
-        sources.AddPages(local, remote, spotifyQueue, youtubeMusic, youtubeTab);
+        sources.AddPages(local, remote, spotifyQueue, youtubeMusic,
+            DesktopTab("Apple Music", "AppleMusic"), DesktopTab("Deezer", "Deezer"), DesktopTab("Amazon Music", "AmazonMusic"));
         var wishOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         wishOptions.Controls.AddRange(new Control[] { collect, new Label { Text = "Musikquelle", AutoSize = true }, wishSource, autoPlay });
         Controls.AddRange(new Control[] { sources, prompt, wishOptions });
@@ -178,7 +166,6 @@ internal sealed class MusicQueue : UserControl
     {
         bind("collect-music-requests", collect);
         bind("autoplay-music-requests", autoPlay);
-        bind("youtube-music-use-desktop", usePear);
     }
 
     internal async Task<bool> ConsiderRequest(string handle, string name, string message)
@@ -264,10 +251,9 @@ internal sealed class MusicQueue : UserControl
                 var session = wishSession;
                 if (!chatAvailable()) continue;
                 var source = wish.Source;
-                var desktopMusic = source == "YouTube Music" && usePear.Checked;
                 var id = wish.Selected == null
                     ? (source == "Spotify" ? SpotifyQueueControl.TrackUri(wish.Query) :
-                        wish.Query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeQueue.VideoId(wish.Query) : null)
+                        wish.Query.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? YouTubeMusicControl.VideoId(wish.Query) : null)
                     : wish.Selected.Id;
                 if (id == null)
                 {
@@ -277,13 +263,11 @@ internal sealed class MusicQueue : UserControl
                         var matches = await spotifyQueueControl.Search(wish.Query);
                         tracks = matches == null ? null : matches.Take(3).Select(track => new MusicMatch(track.Uri, track.ToString())).ToArray();
                     }
-                    else if (source == "YouTube Music") tracks = desktopMusic ? await pear.Search(wish.Query) : await youtubeMusicPlayer.SearchLive(wish.Query);
-                    else tracks = await youtube.SearchLive(wish.Query);
+                    else tracks = await pear.Search(wish.Query);
                     if (!WishIsCurrent(session)) continue;
                     if (tracks == null || tracks.Length == 0)
                     {
                         prompt.Text = tracks == null ? source + "-Suche derzeit nicht verfügbar." : "Keine Treffer auf " + source + ".";
-                        if (source != "Spotify") prompt.Text += " " + (source == "YouTube" ? youtube : youtubeMusicPlayer).AddLiveWish(wish.Query, null);
                         continue;
                     }
                     if (tracks.Length > 1)
@@ -294,8 +278,7 @@ internal sealed class MusicQueue : UserControl
                     id = tracks[0].Id;
                 }
                 if (!WishIsCurrent(session)) continue;
-                if (source != "Spotify" && !desktopMusic) { prompt.Text = (source == "YouTube" ? youtube : youtubeMusicPlayer).AddLiveWish(wish.Query, id); continue; }
-                var added = desktopMusic ? await pear.QueueLiveWish(id) : await spotifyQueueControl.Enqueue(id);
+                var added = source == "YouTube Music" ? await pear.QueueLiveWish(id) : await spotifyQueueControl.Enqueue(id);
                 if (WishIsCurrent(session))
                     prompt.Text = added ? "Titel in die Warteschlange von " + source + " aufgenommen."
                         : "Titel konnte nicht eingereiht werden. Prüfe die Verbindung zu " + source + ".";
@@ -406,7 +389,23 @@ internal sealed class MusicQueue : UserControl
         }
     }
 
-    private async void ControlSpotify(Control buttons, string action)
+    private void ControlSpotify(Control buttons, string action) { ControlDesktop(buttons, "Spotify", "Spotify", spotifyStatus, action); }
+
+    private TabPage DesktopTab(string name, string provider)
+    {
+        var tab = new TabPage(name);
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        var feedback = new Label { Dock = DockStyle.Top, Height = 40, Text = "Starte " + name + " und spiele dort einen Titel an." };
+        AddButton(bar, "Desktop-App prüfen", () => ControlDesktop(bar, name, provider, feedback, "Status"));
+        AddButton(bar, "Wiedergabe / Pause", () => ControlDesktop(bar, name, provider, feedback, "Toggle"));
+        AddButton(bar, "Vorheriger Titel", () => ControlDesktop(bar, name, provider, feedback, "Previous"));
+        AddButton(bar, "Nächster Titel", () => ControlDesktop(bar, name, provider, feedback, "Next"));
+        var note = new Label { Dock = DockStyle.Top, Height = 45, Text = "Warteschlange und Titelsuche steuerst du in " + name + "." };
+        tab.Controls.AddRange(new Control[] { note, feedback, bar });
+        return tab;
+    }
+
+    private async void ControlDesktop(Control buttons, string name, string provider, Label feedback, string action)
     {
         buttons.Enabled = false;
         try
@@ -415,7 +414,7 @@ internal sealed class MusicQueue : UserControl
             var shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
             var result = await Task.Run(() =>
             {
-                using (var process = Process.Start(new ProcessStartInfo(shell, "-NoProfile -NonInteractive -File \"" + script + "\" -Action " + action)
+                using (var process = Process.Start(new ProcessStartInfo(shell, "-NoProfile -NonInteractive -File \"" + script + "\" -Action " + action + " -Provider " + provider)
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -429,17 +428,17 @@ internal sealed class MusicQueue : UserControl
             if (IsDisposed) return;
             switch (result)
             {
-                case 0: spotifyStatus.Text = action == "Status" ? "Spotify Desktop verbunden." : "Spotify hat den Befehl angenommen."; break;
-                case 2: spotifyStatus.Text = "Starte Spotify Desktop und spiele dort einen Titel an."; break;
-                case 3: spotifyStatus.Text = "Spotify unterstützt diesen Befehl für den aktuellen Titel nicht."; break;
-                default: spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar."; break;
+                case 0: feedback.Text = action == "Status" ? name + " Desktop verbunden." : name + " hat den Befehl angenommen."; break;
+                case 2: feedback.Text = "Starte " + name + " und spiele dort einen Titel an."; break;
+                case 3: feedback.Text = name + " unterstützt diesen Befehl für den aktuellen Titel nicht."; break;
+                default: feedback.Text = "Windows-Mediensteuerung nicht verfügbar."; break;
             }
-            if (result != 0) ErrorLog.Write("Spotify", spotifyStatus.Text + " (Status " + result + ")");
+            if (result != 0) ErrorLog.Write(name, feedback.Text + " (Status " + result + ")");
         }
         catch (System.ComponentModel.Win32Exception error)
         {
-            if (!IsDisposed) spotifyStatus.Text = "Windows-Mediensteuerung nicht verfügbar.";
-            ErrorLog.Write("Spotify", "Windows-Mediensteuerung konnte nicht gestartet werden.", error);
+            if (!IsDisposed) feedback.Text = "Windows-Mediensteuerung nicht verfügbar.";
+            ErrorLog.Write(name, "Windows-Mediensteuerung konnte nicht gestartet werden.", error);
         }
         finally { if (!IsDisposed) buttons.Enabled = true; }
     }
