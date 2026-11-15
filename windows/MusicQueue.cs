@@ -29,7 +29,7 @@ internal sealed class MusicQueue : UserControl
     private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
     private readonly List<FileInfo> library = new List<FileInfo>();
     private readonly Dictionary<string, Choice> choices = new Dictionary<string, Choice>(StringComparer.OrdinalIgnoreCase);
-    private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, Height = 75, AccessibleName = "Nachricht für den LIVE-Chat" };
+    private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, Multiline = true, Height = 26, AccessibleName = "Nachricht für den LIVE-Chat" };
     private readonly Timer reminders = new Timer { Interval = 900000 };
     private readonly Func<bool> chatAvailable;
     private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
@@ -161,6 +161,7 @@ internal sealed class MusicQueue : UserControl
         var wishOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         wishOptions.Controls.AddRange(new Control[] { collect, new Label { Text = "Musikquelle", AutoSize = true }, wishSource, autoPlay });
         Controls.AddRange(new Control[] { sources, prompt, wishOptions });
+        prompt.TextChanged += delegate { prompt.Height = Math.Max(26, Math.Min(4, prompt.Lines.Length) * Font.Height + 8); };
         collect.CheckedChanged += delegate
         {
             ResetChoices();

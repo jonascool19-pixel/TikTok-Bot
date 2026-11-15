@@ -364,7 +364,11 @@ internal sealed class BotWindow : Form
         designsTab.Controls.Add(designOptions);
         var helpTab = new TabPage("Anleitung");
         helpTab.Controls.Add(new BotHelp { Dock = DockStyle.Fill });
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, helpTab };
+        var speechTab = new TabPage("Vorlesesperren");
+        var speechFilters = new SpeechFilters(data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
+        comments.ShouldReadComment = speechFilters.ShouldRead;
+        speechTab.Controls.Add(speechFilters);
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, helpTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -569,6 +573,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
+                            SpeechFilters.Verify(data) && YouTubeQueue.VerifyLayout(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
@@ -646,10 +651,6 @@ internal sealed class BotWindow : Form
             RunningGame.TitleFromExecutable(@"D:\Games\EGS\Launcher.exe", "Launcher", "", "") == "" &&
             MusicQueue.IsMusicCommand("  #Musikwunsch Motor Town") &&
             MusicQueue.IsMusicCommand("#Antwort 2") &&
-            !LiveComments.ShouldReadComment("#Antwort 2") &&
-            !LiveComments.ShouldReadComment("@Mello | #ANTWORT 1 = Lied A | #Antwort 2 = Lied B") &&
-            !LiveComments.ShouldReadComment("  #Musikwunsch Artist – Titel") &&
-            LiveComments.ShouldReadComment("Moin, wie geht es dir?") &&
             !MusicQueue.IsMusicCommand("Wie geht ein Musikwunsch?") &&
             ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
             ChatReplies.GameReply("Was ist das denn für ein Spiel?", "Motor Town") == "Das Spiel heißt Motor Town." &&

@@ -65,19 +65,25 @@ internal sealed class YouTubeQueue : UserControl
         Button(tools, "Stopp", Stop);
         Button(tools, "Webseite öffnen", () => ShowWebsite(profile));
 
-        var lists = new TableLayoutPanel { Dock = DockStyle.Right, Width = 255, ColumnCount = 1, RowCount = 2, Padding = new Padding(6), AutoScroll = true };
-        lists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        lists.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        lists.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        var pending = ListPanel("Offene Chatwünsche", wishes);
-        Button(pending.Actions, "Wunsch suchen", async () => await FindWish());
-        Button(pending.Actions, "Wunsch entfernen", () => { if (wishes.SelectedIndex >= 0) wishes.Items.RemoveAt(wishes.SelectedIndex); });
+        var listMode = new ThemeComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList, Name = "ListMode", AccessibleName = "Musikliste auswählen" };
+        listMode.Items.AddRange(new object[] { "Warteschlange", "Offene Chatwünsche" });
+        var lists = new Panel { Name = "QueueSidebar", Dock = DockStyle.Right, Width = 246, Padding = new Padding(8, 6, 6, 6) };
+        var listBody = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 0) };
+        var pending = new QueuePanel(wishes);
+        Button(pending.Actions, "Suchen", async () => await FindWish());
+        Button(pending.Actions, "Entfernen", () => { if (wishes.SelectedIndex >= 0) wishes.Items.RemoveAt(wishes.SelectedIndex); });
         wishes.DoubleClick += async delegate { await FindWish(); };
-        var upcoming = ListPanel("Warteschlange", queue);
+        var upcoming = new QueuePanel(queue);
         Button(upcoming.Actions, "Auswahl entfernen", () => { if (queue.SelectedIndex >= 0) queue.Items.RemoveAt(queue.SelectedIndex); });
-        lists.Controls.Add(pending.Panel, 0, 0);
-        lists.Controls.Add(upcoming.Panel, 0, 1);
-        var matchActions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
+        listBody.Controls.AddRange(new Control[] { upcoming.Panel, pending.Panel });
+        lists.Controls.AddRange(new Control[] { listBody, listMode });
+        listMode.SelectedIndexChanged += delegate
+        {
+            upcoming.Panel.Visible = listMode.SelectedIndex == 0;
+            pending.Panel.Visible = listMode.SelectedIndex == 1;
+        };
+        listMode.SelectedIndex = 0;
+        var matchActions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(0, 4, 0, 0) };
         Button(matchActions, "Treffer abspielen", () => UseResult(true));
         Button(matchActions, "Zur Warteschlange hinzufügen", () => UseResult(false));
         searchResults.DoubleClick += delegate { UseResult(false); };
@@ -95,20 +101,38 @@ internal sealed class YouTubeQueue : UserControl
         timer.Tick += async delegate { await CheckPlayer(); };
     }
 
-    private sealed class QueuePanel
+    internal static bool VerifyLayout(string directory)
     {
-        internal readonly Panel Panel = new Panel { Dock = DockStyle.Fill, MinimumSize = new System.Drawing.Size(0, 95) };
-        internal readonly FlowLayoutPanel Actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true };
-
-        internal QueuePanel(string title, ListBox list)
+        foreach (var music in new[] { false, true })
         {
-            Panel.Controls.AddRange(new Control[] { list, Actions, new Label { Text = title, Dock = DockStyle.Top, Height = 23 } });
+            using (var control = new YouTubeQueue(directory, music) { Size = new System.Drawing.Size(960, 265) })
+            {
+                AppTheme.Designs[0].Apply(control);
+                control.PerformLayout();
+                var side = control.Controls["QueueSidebar"];
+                var mode = (ComboBox)side.Controls["ListMode"];
+                for (var i = 0; i < mode.Items.Count; i++)
+                {
+                    mode.SelectedIndex = i;
+                    var list = i == 0 ? control.queue : control.wishes;
+                    list.Parent.PerformLayout();
+                    if (list.Height < 45 || list.Bottom > list.Parent.ClientSize.Height ||
+                        control.views.Width < 450 || control.views.Bounds.IntersectsWith(side.Bounds)) return false;
+                }
+            }
         }
+        return true;
     }
 
-    private static QueuePanel ListPanel(string label, ListBox list)
+    private sealed class QueuePanel
     {
-        return new QueuePanel(label, list);
+        internal readonly Panel Panel = new Panel { Dock = DockStyle.Fill };
+        internal readonly FlowLayoutPanel Actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, WrapContents = false };
+
+        internal QueuePanel(ListBox list)
+        {
+            Panel.Controls.AddRange(new Control[] { list, Actions });
+        }
     }
 
     private static void Button(Control panel, string label, Action action)
