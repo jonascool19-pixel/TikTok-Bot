@@ -646,6 +646,10 @@ internal sealed class BotWindow : Form
             RunningGame.TitleFromExecutable(@"D:\Games\EGS\Launcher.exe", "Launcher", "", "") == "" &&
             MusicQueue.IsMusicCommand("  #Musikwunsch Motor Town") &&
             MusicQueue.IsMusicCommand("#Antwort 2") &&
+            !LiveComments.ShouldReadComment("#Antwort 2") &&
+            !LiveComments.ShouldReadComment("@Mello | #ANTWORT 1 = Lied A | #Antwort 2 = Lied B") &&
+            !LiveComments.ShouldReadComment("  #Musikwunsch Artist – Titel") &&
+            LiveComments.ShouldReadComment("Moin, wie geht es dir?") &&
             !MusicQueue.IsMusicCommand("Wie geht ein Musikwunsch?") &&
             ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
             ChatReplies.Suggest("Moin!", "") != null &&

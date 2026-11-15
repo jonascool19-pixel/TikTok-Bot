@@ -285,7 +285,7 @@ internal sealed class LiveComments : UserControl
                 history.Items.Add(line);
                 history.TopIndex = history.Items.Count - 1;
                 if (IsOwnComment != null && IsOwnComment(comment.Handle, comment.Text)) continue;
-                if (read.Checked && !comment.Text.TrimStart().StartsWith("#Musikwunsch", StringComparison.OrdinalIgnoreCase)) Speak(line);
+                if (read.Checked && ShouldReadComment(comment.Text)) Speak(line);
                 var onViewer = ViewerComment;
                 if (ViewerActivity != null) ViewerActivity(comment.Handle, comment.Name);
                 if (onViewer != null) onViewer(comment.Handle, comment.Name, comment.Text);
@@ -307,6 +307,12 @@ internal sealed class LiveComments : UserControl
     internal static bool IsPlaybackAdvancing(double? previous, double? current)
     {
         return previous.HasValue && current.HasValue && current.Value > previous.Value;
+    }
+
+    internal static bool ShouldReadComment(string text)
+    {
+        return !text.TrimStart().StartsWith("#Musikwunsch", StringComparison.OrdinalIgnoreCase) &&
+            text.IndexOf("#Antwort", StringComparison.OrdinalIgnoreCase) < 0;
     }
 
     internal static string GiftAnnouncement(string name, string title, int count = 1)
