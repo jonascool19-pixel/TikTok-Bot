@@ -176,21 +176,28 @@ internal sealed class MusicQueue : UserControl
         bind("youtube-music-use-desktop", usePear);
     }
 
-    internal bool ConsiderRequest(string handle, string message)
+    internal bool ConsiderRequest(string handle, string name, string message)
     {
         if (!collect.Checked) return false;
-        Choice choice;
-        int number;
-        if (!string.IsNullOrEmpty(handle) && choices.TryGetValue(handle, out choice) &&
-            choice.Expires > DateTime.UtcNow && Regex.IsMatch(message, @"\A[123]\z") && int.TryParse(message, out number))
+        var handleKey = string.IsNullOrEmpty(handle) ? "" : "@" + handle;
+        var nameKey = string.IsNullOrWhiteSpace(name) ? "" : "name:" + name.Trim();
+        var selection = Regex.Match(message.Trim(), @"\A(?:([0-9]{5})\s+)?([123])\z");
+        if (selection.Success)
         {
-            if (number <= (choice.Remote != null ? choice.Remote.Length : choice.Tracks.Length))
+            var code = selection.Groups[1].Value;
+            var key = code.Length == 0 ? handleKey : nameKey + ":" + code;
+            Choice choice;
+            if (choices.TryGetValue(key, out choice) && choice.Expires > DateTime.UtcNow)
             {
-                choices.Remove(handle);
-                if (choice.Remote != null) QueueRemote(handle, choice.Remote[number - 1].Id, choice.Remote[number - 1]);
-                else QueueRequest(choice.Tracks[number - 1]);
+                var index = selection.Groups[2].Value[0] - '1';
+                if (index < (choice.Remote != null ? choice.Remote.Length : choice.Tracks.Length))
+                {
+                    choices.Remove(key);
+                    if (choice.Remote != null) QueueRemote(handle, nameKey, choice.Remote[index].Id, choice.Remote[index]);
+                    else QueueRequest(choice.Tracks[index]);
+                }
+                return true;
             }
-            return true;
         }
         var match = Regex.Match(message, @"\A(?:#musikwunsch|!song|!wunsch)\s+(.{2,150})\z", RegexOptions.IgnoreCase);
         if (!match.Success) return false;
@@ -200,8 +207,8 @@ internal sealed class MusicQueue : UserControl
         var source = wishSource.SelectedItem as string;
         if (source != "Lokale Dateien")
         {
-            if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
-            QueueRemote(handle, title);
+            if (handleKey.Length > 0) choices.Remove(handleKey);
+            QueueRemote(handle, nameKey, title);
             return true;
         }
         var terms = Regex.Split(title.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(s => s.Length > 0).ToArray();
@@ -209,19 +216,15 @@ internal sealed class MusicQueue : UserControl
         var tracks = library.Where(file => File.Exists(file.FullName) &&
             terms.All(term => Path.GetFileNameWithoutExtension(file.Name).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0))
             .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase).Take(3).ToArray();
-        if (!string.IsNullOrEmpty(handle)) choices.Remove(handle);
+        if (handleKey.Length > 0) choices.Remove(handleKey);
         foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
             choices.Remove(expired);
         if (tracks.Length == 1) QueueRequest(tracks[0]);
-        else if (tracks.Length > 1 && !string.IsNullOrEmpty(handle) && choices.Count < 100)
+        else if (tracks.Length > 1)
         {
-            choices[handle] = new Choice { Tracks = tracks, Expires = DateTime.UtcNow.AddMinutes(3) };
-            var names = tracks.Select((file, index) => (index + 1) + ") " + Path.GetFileNameWithoutExtension(file.Name));
-            var reply = "@" + handle + " Wähle mit " + (tracks.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
-            var max = Math.Max(8, (150 - reply.Length - 6) / tracks.Length);
-            prompt.Text = reply + string.Join(" | ", names.Select(name => name.Length > max ? name.Substring(0, max - 1) + "…" : name));
+            var options = tracks.Select(file => new MusicMatch(null, Path.GetFileNameWithoutExtension(file.Name))).ToArray();
+            OfferChoice(handle, nameKey, options, wishSession, tracks);
         }
-        else if (tracks.Length > 1) prompt.Text = "Mehrere lokale Treffer. Der Zuschauer konnte nicht eindeutig zugeordnet werden.";
         else prompt.Text = "Kein lokaler Treffer für „" + title + "“.";
         return true;
     }
@@ -234,16 +237,18 @@ internal sealed class MusicQueue : UserControl
         prompt.Text = collect.Checked ? Hint : "";
     }
 
+    private int choiceSequence;
+
     private sealed class RemoteWish
     {
-        internal string Source, Handle, Query;
+        internal string Source, Handle, NameKey, Query;
         internal MusicMatch Selected;
     }
 
-    private async void QueueRemote(string handle, string query, MusicMatch selected = null)
+    private async void QueueRemote(string handle, string nameKey, string query, MusicMatch selected = null)
     {
         if (remotePending.Count >= 20) { prompt.Text = "Musikwunschliste ausgelastet. Bitte warte kurz."; return; }
-        remotePending.Enqueue(new RemoteWish { Source = (string)wishSource.SelectedItem, Handle = handle, Query = query, Selected = selected });
+        remotePending.Enqueue(new RemoteWish { Source = (string)wishSource.SelectedItem, Handle = handle, NameKey = nameKey, Query = query, Selected = selected });
         if (processingRemote) return;
         processingRemote = true;
         try
@@ -278,7 +283,7 @@ internal sealed class MusicQueue : UserControl
                     }
                     if (tracks.Length > 1)
                     {
-                        await OfferChoice(wish.Handle, tracks, session);
+                        await OfferChoice(wish.Handle, wish.NameKey, tracks, session);
                         continue;
                     }
                     id = tracks[0].Id;
@@ -299,14 +304,31 @@ internal sealed class MusicQueue : UserControl
         return !IsDisposed && session == wishSession && chatAvailable();
     }
 
-    private async Task OfferChoice(string handle, MusicMatch[] options, int session)
+    private async Task OfferChoice(string handle, string nameKey, MusicMatch[] options, int session, FileInfo[] localTracks = null)
     {
-        if (string.IsNullOrEmpty(handle)) { prompt.Text = "Mehrere Treffer. Der Zuschauer konnte nicht zugeordnet werden."; return; }
         foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
             choices.Remove(expired);
-        if (choices.Count >= 100 && !choices.ContainsKey(handle)) { prompt.Text = "Zu viele offene Musikwünsche."; return; }
-        choices[handle] = new Choice { Remote = options, Expires = DateTime.UtcNow.AddMinutes(3) };
-        var reply = "@" + handle + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
+        if (choices.Count >= 100) { prompt.Text = "Zu viele offene Musikwünsche."; return; }
+        string key;
+        string reply;
+        if (string.IsNullOrEmpty(handle))
+        {
+            if (nameKey.Length == 0) { prompt.Text = "TikTok hat keinen Absender für diesen Musikwunsch angezeigt."; return; }
+            string code;
+            do
+            {
+                choiceSequence = (choiceSequence + 1) % 90000;
+                code = (10000 + choiceSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                key = nameKey + ":" + code;
+            } while (choices.ContainsKey(key));
+            reply = "Wunsch " + code + " – antworte z. B. " + code + " 2: ";
+        }
+        else
+        {
+            key = "@" + handle;
+            reply = key + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
+        }
+        choices[key] = new Choice { Remote = localTracks == null ? options : null, Tracks = localTracks, Expires = DateTime.UtcNow.AddMinutes(3) };
         var max = (150 - reply.Length - (options.Length - 1) * 3) / options.Length;
         var question = reply + string.Join(" | ", options.Select((item, index) =>
         {

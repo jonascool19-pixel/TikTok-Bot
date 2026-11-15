@@ -30,7 +30,8 @@ internal sealed class LiveComments : UserControl
     private System.Threading.CancellationTokenSource characterSpeech;
     private int localVoiceCount;
     private readonly Queue<string> pending = new Queue<string>();
-    internal event Action<string, string> ViewerComment;
+    internal event Action<string, string, string> ViewerComment;
+    internal Func<string, string, bool> IsOwnComment;
     internal event Action<string, string> ViewerActivity;
     internal event Action<string> AudienceChanged;
     internal bool ChatAvailable { get; private set; }
@@ -56,9 +57,15 @@ internal sealed class LiveComments : UserControl
         const name = row.querySelector('[data-e2e=""message-owner-name""]');
         const text = row.querySelector('.break-words.align-middle');
         if (!name || !text) continue;
-        const link = row.querySelector('a[href^=""/@""]');
-        const handle = link && link.getAttribute('href').match(/^\/@([\w.]+)(?:[/?#]|$)/);
-        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.textContent.trim().slice(0,300), Handle: handle ? handle[1] : '' };
+        const link = name.closest('a[href]') || name.querySelector('a[href]') ||
+            row.querySelector('a[href^=""/@""], a[href^=""https://www.tiktok.com/@""]');
+        let profile;
+        try { if (link && link.href) profile = new URL(link.href, location.href); } catch {}
+        const fromLink = profile && (profile.origin === location.origin || profile.origin === 'https://www.tiktok.com') &&
+            profile.pathname.match(/^\/@([\w.]{1,64})\/?$/);
+        const rawHandle = name.getAttribute('data-unique-id') || row.getAttribute('data-unique-id') || '';
+        const handle = fromLink ? fromLink[1] : (/^@?[\w.]{1,64}$/.test(rawHandle) ? rawHandle.replace(/^@/, '') : '');
+        const entry = { Name: name.textContent.trim().slice(0,80), Text: text.textContent.trim().slice(0,300), Handle: handle };
         if (!entry.Name || !entry.Text) continue;
         const key = JSON.stringify(entry);
         if (previous && previous.root === root && seen.get(row) !== key) comments.push(entry);
@@ -216,11 +223,12 @@ internal sealed class LiveComments : UserControl
         var initial = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         await core.ExecuteScriptAsync("const row = document.querySelector('[data-e2e=chat-message]').cloneNode(true);" +
             "row.querySelector('.break-words').textContent = 'Wie heißt das Spiel?';" +
+            "row.setAttribute('data-unique-id', 'test.viewer');" +
             "document.querySelector('[data-e2e=chat-room]').appendChild(row);");
         var added = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         var repeated = serializer.Deserialize<List<Comment>>(await core.ExecuteScriptAsync(ReadComments));
         return initial != null && initial.Count == 0 && added != null && added.Count == 1 &&
-            added[0].Name == "Zuschauer" && added[0].Text == "Wie heißt das Spiel?" &&
+            added[0].Name == "Zuschauer" && added[0].Handle == "test.viewer" && added[0].Text == "Wie heißt das Spiel?" &&
             repeated != null && repeated.Count == 0 &&
             GiftAnnouncement("Alex", "Rose") == "Alex hat ein Geschenk geschickt: Rose. Danke, Alex, für Rose!";
     }
@@ -274,10 +282,11 @@ internal sealed class LiveComments : UserControl
                 if (history.Items.Count == 200) history.Items.RemoveAt(0);
                 history.Items.Add(line);
                 history.TopIndex = history.Items.Count - 1;
+                if (IsOwnComment != null && IsOwnComment(comment.Handle, comment.Text)) continue;
                 if (read.Checked) Speak(line);
                 var onViewer = ViewerComment;
                 if (ViewerActivity != null) ViewerActivity(comment.Handle, comment.Name);
-                if (onViewer != null) onViewer(comment.Handle, comment.Text);
+                if (onViewer != null) onViewer(comment.Handle, comment.Name, comment.Text);
             }
         }
         catch (InvalidOperationException error) { ReportPollError(current, "LIVE-Chat vorübergehend nicht verfügbar.", error); }

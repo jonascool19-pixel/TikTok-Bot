@@ -187,15 +187,10 @@ internal sealed class BotWindow : Form
         var chatTab = new TabPage("Kommentare und Stimme");
         chatTab.Controls.Add(comments);
         var musicTab = new TabPage("Musik");
-        comments.ViewerComment += (handle, message) =>
+        comments.IsOwnComment = IsOwnComment;
+        comments.ViewerComment += (handle, name, message) =>
         {
-            var author = string.IsNullOrWhiteSpace(handle) ? null : "@" + handle.TrimStart('@');
-            if (author != null && (string.Equals(author, botHandle, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(author, configuredHandle, StringComparison.OrdinalIgnoreCase))) return;
-            DateTime sentAt;
-            if (recentBotReplies.TryGetValue(message.Trim(), out sentAt) &&
-                DateTime.UtcNow - sentAt < TimeSpan.FromSeconds(30)) return;
-            if (!music.ConsiderRequest(handle, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
+            if (!music.ConsiderRequest(handle, name, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
         musicTab.Controls.Add(music);
@@ -686,6 +681,22 @@ internal sealed class BotWindow : Form
     private DateTime nextReplyTime;
     private readonly System.Collections.Generic.Dictionary<string, DateTime> recentBotReplies =
         new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
+
+    private bool IsOwnComment(string handle, string message)
+    {
+        var author = string.IsNullOrWhiteSpace(handle) ? null : "@" + handle.TrimStart('@');
+        var ownAccount = author != null && (string.Equals(author, botHandle, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(author, configuredHandle, StringComparison.OrdinalIgnoreCase));
+        var text = message.Trim();
+        DateTime sentAt;
+        var echo = recentBotReplies.TryGetValue(text, out sentAt) && DateTime.UtcNow - sentAt < TimeSpan.FromSeconds(30);
+        if (ownAccount || (echo && (author == null || (botHandle == null && configuredHandle == null))))
+        {
+            recentBotReplies.Remove(text);
+            return true;
+        }
+        return false;
+    }
 
     private System.Threading.Tasks.Task<string> SendLiveReply(string reply) { return SendLiveReply(reply, false); }
 
