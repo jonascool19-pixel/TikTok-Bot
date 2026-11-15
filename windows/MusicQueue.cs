@@ -29,7 +29,7 @@ internal sealed class MusicQueue : UserControl
     private readonly CheckBox autoPlay = new CheckBox { Text = "Musikwünsche lokal automatisch abspielen", AutoSize = true };
     private readonly List<FileInfo> library = new List<FileInfo>();
     private readonly Dictionary<string, Choice> choices = new Dictionary<string, Choice>(StringComparer.OrdinalIgnoreCase);
-    private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, AccessibleName = "Nachricht für den LIVE-Chat" };
+    private readonly TextBox prompt = new TextBox { Dock = DockStyle.Bottom, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, Height = 75, AccessibleName = "Nachricht für den LIVE-Chat" };
     private readonly Timer reminders = new Timer { Interval = 900000 };
     private readonly Func<bool> chatAvailable;
     private const string Hint = "Du kannst dir Musik wünschen: #Musikwunsch Künstler – Titel";
@@ -181,15 +181,15 @@ internal sealed class MusicQueue : UserControl
         if (!collect.Checked) return false;
         var handleKey = string.IsNullOrEmpty(handle) ? "" : "@" + handle;
         var nameKey = string.IsNullOrWhiteSpace(name) ? "" : "name:" + name.Trim();
-        var selection = Regex.Match(message.Trim(), @"\A(?:([0-9]{5})\s+)?([123])\z");
+        var selection = Regex.Match(message.Trim(), @"\A(?:#Antwort\s+)?([123])\z", RegexOptions.IgnoreCase);
         if (selection.Success)
         {
             var code = selection.Groups[1].Value;
-            var key = code.Length == 0 ? handleKey : nameKey + ":" + code;
+            var key = handleKey.Length > 0 && choices.ContainsKey(handleKey) ? handleKey : nameKey;
             Choice choice;
             if (choices.TryGetValue(key, out choice) && choice.Expires > DateTime.UtcNow)
             {
-                var index = selection.Groups[2].Value[0] - '1';
+                var index = selection.Groups[1].Value[0] - '1';
                 if (index < (choice.Remote != null ? choice.Remote.Length : choice.Tracks.Length))
                 {
                     choices.Remove(key);
@@ -207,7 +207,7 @@ internal sealed class MusicQueue : UserControl
         var source = wishSource.SelectedItem as string;
         if (source != "Lokale Dateien")
         {
-            if (handleKey.Length > 0) choices.Remove(handleKey);
+            choices.Remove(handleKey.Length > 0 ? handleKey : nameKey);
             QueueRemote(handle, nameKey, title);
             return true;
         }
@@ -216,7 +216,7 @@ internal sealed class MusicQueue : UserControl
         var tracks = library.Where(file => File.Exists(file.FullName) &&
             terms.All(term => Path.GetFileNameWithoutExtension(file.Name).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0))
             .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase).Take(3).ToArray();
-        if (handleKey.Length > 0) choices.Remove(handleKey);
+        choices.Remove(handleKey.Length > 0 ? handleKey : nameKey);
         foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
             choices.Remove(expired);
         if (tracks.Length == 1) QueueRequest(tracks[0]);
@@ -237,7 +237,7 @@ internal sealed class MusicQueue : UserControl
         prompt.Text = collect.Checked ? Hint : "";
     }
 
-    private int choiceSequence;
+
 
     private sealed class RemoteWish
     {
@@ -309,36 +309,24 @@ internal sealed class MusicQueue : UserControl
         foreach (var expired in choices.Where(pair => pair.Value.Expires <= DateTime.UtcNow).Select(pair => pair.Key).ToArray())
             choices.Remove(expired);
         if (choices.Count >= 100) { prompt.Text = "Zu viele offene Musikwünsche."; return; }
-        string key;
-        string reply;
-        if (string.IsNullOrEmpty(handle))
-        {
-            if (nameKey.Length == 0) { prompt.Text = "TikTok hat keinen Absender für diesen Musikwunsch angezeigt."; return; }
-            string code;
-            do
-            {
-                choiceSequence = (choiceSequence + 1) % 90000;
-                code = (10000 + choiceSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                key = nameKey + ":" + code;
-            } while (choices.ContainsKey(key));
-            reply = "Wunsch " + code + " – antworte z. B. " + code + " 2: ";
-        }
-        else
-        {
-            key = "@" + handle;
-            reply = key + " Wähle mit " + (options.Length == 2 ? "1 oder 2: " : "1, 2 oder 3: ");
-        }
+        var key = string.IsNullOrEmpty(handle) ? nameKey : "@" + handle;
+        if (key.Length == 0) { prompt.Text = "TikTok hat keinen Absender für diesen Musikwunsch angezeigt."; return; }
         choices[key] = new Choice { Remote = localTracks == null ? options : null, Tracks = localTracks, Expires = DateTime.UtcNow.AddMinutes(3) };
-        var max = (150 - reply.Length - (options.Length - 1) * 3) / options.Length;
-        var question = reply + string.Join(" | ", options.Select((item, index) =>
-        {
-            var label = (index + 1) + ") " + item.Title;
-            return label.Length <= max ? label : label.Substring(0, max - (char.IsHighSurrogate(label[max - 2]) ? 2 : 1)) + "…";
-        }));
+        var addressee = string.IsNullOrEmpty(handle) ? nameKey.Substring(5) : "@" + handle;
+        var header = string.IsNullOrEmpty(handle) ? LimitChatText(addressee, 42) : addressee;
+        var max = (150 - header.Length - options.Length * ("#Antwort 1 = ".Length + 1)) / options.Length;
+        var question = header + "\n" + string.Join("\n", options.Select((item, index) =>
+            "#Antwort " + (index + 1) + " = " + LimitChatText(Regex.Replace(item.Title, @"\s+", " ").Trim(), max)));
         prompt.Text = question;
         if (SendChoice == null) return;
         var delivery = await SendChoice(question);
         if (WishIsCurrent(session) && prompt.Text == question && delivery != null) spotifyStatus.Text = delivery;
+    }
+
+    private static string LimitChatText(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        return text.Substring(0, max - (char.IsHighSurrogate(text[max - 2]) ? 2 : 1)) + "…";
     }
 
     private bool AddWish(string text, bool manual = true, Label feedback = null)

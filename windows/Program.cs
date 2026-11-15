@@ -641,6 +641,9 @@ internal sealed class BotWindow : Form
         ErrorLog.Clear();
         return entries.Contains("Starttest | Absichtlicher Testfehler. | IOException") && !entries.Contains(secret) &&
             ErrorLog.Read() == "Keine Fehler protokolliert." &&
+            RunningGame.ParseSteamTitle(@"""name"" ""Euro Truck Simulator 2""") == "Euro Truck Simulator 2" &&
+            RunningGame.TitleFromExecutable(@"D:\GOG Games\Testspiel\game.exe", "Testspiel", "", "") == "Testspiel" &&
+            RunningGame.TitleFromExecutable(@"D:\Games\EGS\Launcher.exe", "Launcher", "", "") == "" &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&
@@ -682,12 +685,14 @@ internal sealed class BotWindow : Form
     private readonly System.Collections.Generic.Dictionary<string, DateTime> recentBotReplies =
         new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
 
+    private static string ReplyFingerprint(string text) { return Regex.Replace(text, @"\s+", " ").Trim(); }
+
     private bool IsOwnComment(string handle, string message)
     {
         var author = string.IsNullOrWhiteSpace(handle) ? null : "@" + handle.TrimStart('@');
         var ownAccount = author != null && (string.Equals(author, botHandle, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(author, configuredHandle, StringComparison.OrdinalIgnoreCase));
-        var text = message.Trim();
+        var text = ReplyFingerprint(message);
         DateTime sentAt;
         var echo = recentBotReplies.TryGetValue(text, out sentAt) && DateTime.UtcNow - sentAt < TimeSpan.FromSeconds(30);
         if (ownAccount || (echo && (author == null || (botHandle == null && configuredHandle == null))))
@@ -726,7 +731,7 @@ internal sealed class BotWindow : Form
             var now = DateTime.UtcNow;
             foreach (var text in new System.Collections.Generic.List<string>(recentBotReplies.Keys))
                 if (now - recentBotReplies[text] >= TimeSpan.FromSeconds(30)) recentBotReplies.Remove(text);
-            recentBotReplies[reply.Trim()] = now;
+            recentBotReplies[ReplyFingerprint(reply)] = now;
             var json = new System.Web.Script.Serialization.JavaScriptSerializer();
             var result = await core.ExecuteScriptAsync(@"(() => {
                 if ((location.origin + location.pathname.replace(/\/$/, '')).toLowerCase() !== " + json.Serialize(target.ToLowerInvariant()) + @") return 'room';
@@ -759,15 +764,17 @@ internal sealed class BotWindow : Form
 
                 if ((editor.innerText || '').replace(/[\u200B\uFEFF]/g, '').trim()) return 'draft';
                 editor.focus({ preventScroll: true });
-                const reply = " + json.Serialize(reply) + @";
+                let reply = " + json.Serialize(reply) + @";
+                if (reply.includes('\n') && editor.getAttribute('aria-multiline') === 'false') reply = reply.replace(/\n/g, ' ');
                 if (document.activeElement !== editor) return 'focus';
-                if (!document.execCommand('insertText', false, reply) || (editor.innerText || '').trim() !== reply) return 'insert';
+                const normalize = text => text.replace(/\s+/g, ' ').trim();
+                if (!document.execCommand('insertText', false, reply) || normalize(editor.innerText || '') !== normalize(reply)) return 'insert';
                 if (!send) return 'enter';
                 if (send.disabled || send.getAttribute('aria-disabled') === 'true') return 'disabled';
                 send.click();
                 return 'submitted';
             })()");
-            if (result != "\"enter\"" && result != "\"submitted\"") recentBotReplies.Remove(reply.Trim());
+            if (result != "\"enter\"" && result != "\"submitted\"") recentBotReplies.Remove(ReplyFingerprint(reply));
             if (result == "\"enter\"")
             {
                 if (IsDisposed || target != watchedRoom || !comments.ChatAvailable || !IsAllowedRoom(core.Source, target))
