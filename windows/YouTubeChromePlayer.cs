@@ -20,6 +20,7 @@ internal sealed class YouTubeChromePlayer
     private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 256 * 1024 };
     private string playerScript;
     private string tabId;
+    private Process loginWindow;
 
     internal YouTubeChromePlayer(string profile)
     {
@@ -28,6 +29,12 @@ internal sealed class YouTubeChromePlayer
 
     internal async Task<Response> Open()
     {
+        if (loginWindow != null)
+        {
+            if (!loginWindow.HasExited) return new Response { state = "finish-login" };
+            loginWindow.Dispose();
+            loginWindow = null;
+        }
         var tabs = await FindTabs();
         var tab = MusicTab(tabs);
         if (tab != null)
@@ -42,10 +49,7 @@ internal sealed class YouTubeChromePlayer
         if (tabs != null && tabs.Any(item => IsPage(item, "accounts.google.com") || IsPage(item, "consent.youtube.com") || IsPage(item, "consent.google.com")))
             return new Response { state = "login" };
 
-        Directory.CreateDirectory(profile);
-        using (Process.Start(new ProcessStartInfo(ChromePath(),
-            "--user-data-dir=\"" + profile + "\" --remote-debugging-port=0 --no-first-run --no-default-browser-check --app=" + Home)
-            { UseShellExecute = false })) { }
+        using (StartChrome(" --remote-debugging-port=0 --app=" + Home)) { }
 
         Response response = null;
         for (var attempt = 0; attempt < 16; attempt++)
@@ -55,6 +59,40 @@ internal sealed class YouTubeChromePlayer
             if (response.state != "closed" && response.state != "loading" && response.state != "wrong-site") break;
         }
         return response;
+    }
+
+    internal async Task<Response> OpenLogin()
+    {
+        if (loginWindow != null && !loginWindow.HasExited)
+            return new Response { state = "finish-login" };
+        var endpoint = await FindBrowser();
+        if (endpoint != null)
+        {
+            using (var timeout = new CancellationTokenSource(8000))
+            using (var socket = await Connect(endpoint, timeout.Token))
+            {
+                // Chrome closes the socket as it shuts down, sometimes before the reply arrives.
+                using (var replyTimeout = new CancellationTokenSource(2000))
+                try { await Call(socket, "Browser.close", new { }, replyTimeout.Token); }
+                catch (IOException) { }
+                catch (WebSocketException) { }
+                catch (OperationCanceledException) { }
+                for (var attempt = 0; attempt < 20 && await FindBrowser() != null; attempt++)
+                    await Task.Delay(250, timeout.Token);
+                if (await FindBrowser() != null) return new Response { state = "close-player" };
+            }
+        }
+        if (loginWindow != null) loginWindow.Dispose();
+        loginWindow = StartChrome(" --new-window " + Home);
+        return new Response { state = "finish-login" };
+    }
+
+    private Process StartChrome(string arguments)
+    {
+        Directory.CreateDirectory(profile);
+        return Process.Start(new ProcessStartInfo(ChromePath(),
+            "--user-data-dir=\"" + profile + "\" --no-first-run --no-default-browser-check" + arguments)
+            { UseShellExecute = false });
     }
 
     internal async Task<Response> Run(string action, string value = null)
@@ -124,14 +162,10 @@ internal sealed class YouTubeChromePlayer
     {
         try
         {
-            var endpoint = File.ReadAllLines(Path.Combine(profile, "DevToolsActivePort"));
-            int port;
-            if (endpoint.Length < 2 || !int.TryParse(endpoint[0], out port) || port <= 0 || port > 65535 ||
-                !endpoint[1].StartsWith("/devtools/browser/", StringComparison.Ordinal)) return null;
-            var local = "http://127.0.0.1:" + port;
-            var version = json.Deserialize<Dictionary<string, object>>(await Client.GetStringAsync(local + "/json/version"));
-            if (!Equals(Field(version, "webSocketDebuggerUrl"), "ws://127.0.0.1:" + port + endpoint[1])) return null;
-            var tabs = json.Deserialize<Tab[]>(await Client.GetStringAsync(local + "/json/list"));
+            var endpoint = await FindBrowser();
+            if (endpoint == null) return null;
+            var port = endpoint.Port;
+            var tabs = json.Deserialize<Tab[]>(await Client.GetStringAsync("http://127.0.0.1:" + port + "/json/list"));
             foreach (var tab in tabs)
             {
                 Uri uri;
@@ -140,6 +174,26 @@ internal sealed class YouTubeChromePlayer
                     uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0) tab.webSocketDebuggerUrl = null;
             }
             return tabs;
+        }
+        catch (IOException) { return null; }
+        catch (HttpRequestException) { return null; }
+        catch (TaskCanceledException) { return null; }
+    }
+
+    private async Task<Uri> FindBrowser()
+    {
+        try
+        {
+            var endpoint = File.ReadAllLines(Path.Combine(profile, "DevToolsActivePort"));
+            int port;
+            Guid identity;
+            const string prefix = "/devtools/browser/";
+            if (endpoint.Length < 2 || !int.TryParse(endpoint[0], out port) || port <= 0 || port > 65535 ||
+                !endpoint[1].StartsWith(prefix, StringComparison.Ordinal) ||
+                !Guid.TryParseExact(endpoint[1].Substring(prefix.Length), "D", out identity)) return null;
+            var version = json.Deserialize<Dictionary<string, object>>(await Client.GetStringAsync("http://127.0.0.1:" + port + "/json/version"));
+            var address = "ws://127.0.0.1:" + port + endpoint[1];
+            return Equals(Field(version, "webSocketDebuggerUrl"), address) ? new Uri(address) : null;
         }
         catch (IOException) { return null; }
         catch (HttpRequestException) { return null; }
@@ -162,13 +216,18 @@ internal sealed class YouTubeChromePlayer
             uri.Scheme == "https" && uri.Host == host && uri.IsDefaultPort && uri.UserInfo.Length == 0;
     }
 
-    private static async Task<ClientWebSocket> Connect(Tab tab, CancellationToken token)
+    private static Task<ClientWebSocket> Connect(Tab tab, CancellationToken token)
+    {
+        return Connect(new Uri(tab.webSocketDebuggerUrl), token);
+    }
+
+    private static async Task<ClientWebSocket> Connect(Uri address, CancellationToken token)
     {
         var socket = new ClientWebSocket();
         socket.Options.Proxy = null;
         try
         {
-            await socket.ConnectAsync(new Uri(tab.webSocketDebuggerUrl), token);
+            await socket.ConnectAsync(address, token);
             return socket;
         }
         catch { socket.Dispose(); throw; }

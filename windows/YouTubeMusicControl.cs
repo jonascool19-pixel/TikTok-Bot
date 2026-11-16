@@ -14,13 +14,14 @@ internal sealed class YouTubeMusicControl : UserControl
     private readonly SemaphoreSlim commands = new SemaphoreSlim(1);
     private readonly ConnectionButton open = new ConnectionButton { Text = OpenLabel, AutoSize = true };
     private readonly Label status = new Label { Dock = DockStyle.Top, Height = 42,
-        Text = "Öffne YouTube Music und melde dich bei Bedarf im Player an." };
+        Text = "Melde dich bei Bedarf über Google-Konto anmelden an. Öffne danach den Player." };
     private bool opened;
 
     internal YouTubeMusicControl(string directory)
     {
         player = new YouTubeChromePlayer(Path.Combine(directory, "YouTubeMusicChrome"));
         var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
+        var login = new Button { Text = "Google-Konto anmelden", AutoSize = true };
         var field = new TextBox { Width = 310, MaxLength = 250, AccessibleName = "YouTube-Music-Titel oder Link" };
         var search = new Button { Text = "Titel suchen", AutoSize = true };
         var add = new Button { Text = "Zur Warteschlange hinzufügen", AutoSize = true };
@@ -29,7 +30,7 @@ internal sealed class YouTubeMusicControl : UserControl
         AddPlaybackButton(playback, "Vorheriger Titel", "previous");
         AddPlaybackButton(playback, "Wiedergabe / Pause", "toggle-play");
         AddPlaybackButton(playback, "Nächster Titel", "next");
-        tools.Controls.AddRange(new Control[] { open, field, search, add });
+        tools.Controls.AddRange(new Control[] { login, open, field, search, add });
         Controls.AddRange(new Control[] { results, status, tools, playback });
 
         open.Click += async delegate
@@ -39,6 +40,14 @@ internal sealed class YouTubeMusicControl : UserControl
             status.Text = "YouTube Music wird geöffnet …";
             try { await Command("open"); }
             finally { if (!IsDisposed) open.Enabled = true; }
+        };
+        login.Click += async delegate
+        {
+            if (!login.Enabled) return;
+            login.Enabled = false;
+            status.Text = "Chrome für die Google-Anmeldung wird geöffnet …";
+            try { await Command("login"); }
+            finally { if (!IsDisposed) login.Enabled = true; }
         };
         field.TextChanged += delegate { results.Items.Clear(); };
         search.Click += async delegate
@@ -110,8 +119,10 @@ internal sealed class YouTubeMusicControl : UserControl
         try
         {
             if (IsDisposed) return null;
-            if (action == "open") opened = true;
-            var response = action == "open" ? await player.Open() : await player.Run(action, value);
+            var response = action == "login" ? await player.OpenLogin() :
+                action == "open" ? await player.Open() : await player.Run(action, value);
+            if (action == "login") opened = false;
+            if (action == "open") opened = response.state != "finish-login";
             if (!IsDisposed) ShowState(response, action, quiet);
             return response;
         }
@@ -133,7 +144,7 @@ internal sealed class YouTubeMusicControl : UserControl
     {
         var state = response.state;
         if (state == "ready" || state == "ok" || state == "starting" || state == "playing") open.SetConnected(true, OpenLabel, ConnectedLabel);
-        if (state == "closed" || state == "loading" || state == "login" || state == "wrong-site" || state == "error")
+        if (state == "closed" || state == "loading" || state == "login" || state == "finish-login" || state == "close-player" || state == "wrong-site" || state == "error")
             open.SetConnected(false, OpenLabel, ConnectedLabel);
         if (quiet && state == "ready")
         {
@@ -147,13 +158,15 @@ internal sealed class YouTubeMusicControl : UserControl
             case "ready":
                 status.Tag = response.account;
                 status.Text = response.account == "signed-in" ? "Google-Konto in YouTube Music angemeldet." :
-                    response.account == "signed-out" ? "YouTube Music verbunden. Melde dich bei Bedarf im Player an." : "YouTube Music verbunden.";
+                    response.account == "signed-out" ? "YouTube Music verbunden. Melde dich bei Bedarf über Google-Konto anmelden an." : "YouTube Music verbunden.";
                 break;
             case "ok": status.Text = action == "queue" ? "Titel in der Warteschlange bestätigt." : "YouTube Music hat den Befehl angenommen."; break;
             case "starting": status.Text = "Titel geöffnet. Falls nötig, starte die Wiedergabe im Player."; break;
             case "playing": status.Text = "Der Titel wird in YouTube Music abgespielt."; break;
             case "closed": status.Tag = null; status.Text = "Öffne YouTube Music im Bot."; break;
-            case "login": status.Tag = null; status.Text = "Schließe die Anmeldung oder die Cookie-Auswahl im Chrome-Fenster ab."; break;
+            case "login": status.Tag = null; status.Text = "Bestätige die Cookie-Auswahl im Player. Für die Anmeldung nutze Google-Konto anmelden."; break;
+            case "finish-login": status.Tag = null; status.Text = "Melde dich im normalen Chrome-Fenster an, schließe es und klicke dann auf YouTube Music öffnen."; break;
+            case "close-player": status.Text = "Schließe das YouTube-Music-Fenster und klicke erneut auf Google-Konto anmelden."; break;
             case "loading": status.Text = "YouTube Music lädt noch."; break;
             case "no-player": status.Text = "Starte zuerst einen Titel in YouTube Music."; break;
             case "no-track": status.Text = "YouTube Music konnte den Titel nicht laden."; break;
