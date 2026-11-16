@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
@@ -104,7 +105,8 @@ internal sealed class BotWindow : Form
         };
         var commands = new MusicCommands(data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
         var music = new MusicQueue(() => comments.ChatAvailable, data, ShowSettingsFeedback, commands) { Dock = DockStyle.Fill };
-        var replies = new ChatReplies(() => music.RequestsEnabled, data, ShowSettingsFeedback, commands) { Dock = DockStyle.Fill };
+        var learning = new ChatLearning(data, ShowSettingsFeedback) { Dock = DockStyle.Fill };
+        var replies = new ChatReplies(() => music.RequestsEnabled, data, ShowSettingsFeedback, commands, learning) { Dock = DockStyle.Fill };
         BindSetting("mute-live", muteLive);
         music.BindSettings(BindSetting);
         replies.BindSettings(BindSetting);
@@ -205,7 +207,7 @@ internal sealed class BotWindow : Form
         comments.IsOwnComment = IsOwnComment;
         comments.ViewerComment += async (handle, name, message) =>
         {
-            if (!await music.ConsiderRequest(handle, name, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled);
+            if (!await music.ConsiderRequest(handle, name, message)) replies.ConsiderLiveComment(message, music.RequestsEnabled, handle);
         };
         browser.NavigationStarting += delegate { music.ResetChoices(); replies.ResetLiveContext(); };
         musicTab.Controls.Add(music);
@@ -216,11 +218,17 @@ internal sealed class BotWindow : Form
         var errorTab = new TabPage("Fehlerlog");
         errorTab.Controls.Add(new ErrorLogView { Dock = DockStyle.Fill });
         var statsTab = new TabPage("LIVE-Auswertung");
-        var stats = new LiveStats { Dock = DockStyle.Fill };
+        var stats = new LiveStats(data) { Dock = DockStyle.Fill };
         statsTab.Controls.Add(stats);
         comments.ViewerActivity += stats.Record;
         comments.AudienceChanged += stats.SetAudience;
+        comments.ConnectionChanged += connected => stats.ChatConnection(watchedRoom, connected);
         gifts.AudienceChanged += stats.SetEventAudience;
+        gifts.RoomConnected += (id, started) => stats.EventConnection(watchedRoom, id, started);
+        gifts.RoomDisconnected += stats.EventDisconnected;
+        gifts.StreamEnded += stats.StreamEnded;
+        gifts.GiftReceived += stats.RecordGift;
+        FormClosed += delegate { stats.End(); };
         browser.NavigationStarting += (sender, args) =>
         {
             if (IsAllowedRoom(args.Uri, watchedRoom)) stats.SetRoom(watchedRoom);
@@ -391,7 +399,13 @@ internal sealed class BotWindow : Form
         var replyFilters = new SpeechFilters(data, ShowSettingsFeedback, true) { Dock = DockStyle.Fill };
         replies.ShouldReply = replyFilters.ShouldRead;
         replyFiltersTab.Controls.Add(replyFilters);
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, replyFiltersTab, commandsTab, helpTab };
+        var learningTab = new TabPage("Lernvorschläge bearbeiten");
+        learningTab.Controls.Add(learning);
+        var ownRepliesTab = new TabPage("Eigene Chatantworten");
+        ownRepliesTab.Controls.Add(replies.RuleEditor);
+        var settingsPages = new[] { accountTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, replyFiltersTab,
+            commandsTab, helpTab, learningTab, ownRepliesTab }.OrderBy(page => page.Text, StringComparer.Create(
+                System.Globalization.CultureInfo.GetCultureInfo("de-DE"), true)).Concat(new[] { updatesTab });
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -425,7 +439,7 @@ internal sealed class BotWindow : Form
                 entry.Value.Visible = Equals(entry.Key, menu.SelectedItem);
             layoutBrowser();
         };
-        menu.SelectedIndex = 0;
+        menu.SelectedItem = accountTab.Text;
         Controls.Add(liveOptions);
         AcceptButton = open;
         open.Click += delegate
@@ -604,7 +618,7 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
                             VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) &&
-                            await MusicQueue.VerifyChoices(data) && MusicCommands.Verify(data) &&
+                            await MusicQueue.VerifyChoices(data) && MusicCommands.Verify(data) && ChatLearning.Verify(data) && LiveStats.Verify(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }

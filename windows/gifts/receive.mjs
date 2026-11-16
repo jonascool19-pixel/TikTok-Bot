@@ -5,7 +5,7 @@ const clean = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f
 const nonzero = value => value && String(value) !== '0' ? String(value) : '';
 
 export function parseGift(event, roomId, seen, catalog = new Map()) {
-    if (nonzero(event.common?.roomId) && event.common.roomId !== roomId) return null;
+    if (nonzero(event.common?.roomId) && String(event.common.roomId) !== String(roomId)) return null;
     const type = event.gift?.type || event.giftDetails?.giftType || event.extendedGiftInfo?.type || catalog.get(event.giftId)?.type;
     if ((type === 1 || event.gift?.combo) && !Number(event.repeatEnd)) return null;
     const giftId = nonzero(event.giftId);
@@ -26,10 +26,23 @@ export function parseGift(event, roomId, seen, catalog = new Map()) {
 
 export function parseAudience(event, roomId) {
     if (nonzero(event.common?.roomId) && String(event.common.roomId) !== String(roomId)) return null;
-    const value = event.total;
+    const count = asCount(event.viewerCount ?? event.userCount ?? event.total);
+    const total = asCount(event.totalUser);
+    return count === null && total === null ? null : { kind: 'audience', count, total };
+}
+
+function asCount(value) {
     if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null;
     const count = Number(value);
-    return Number.isSafeInteger(count) && count >= 0 ? { kind: 'audience', count } : null;
+    return Number.isSafeInteger(count) && count >= 0 && count <= 2147483647 ? count : null;
+}
+
+export function roomAudience(info) {
+    const room = info?.data ?? info;
+    if (!room || Number(room.status) === 4) return null;
+    const count = asCount(room.user_count ?? room.userCount ?? room.stats?.user_count);
+    const total = asCount(room.total_user ?? room.stats?.total_user);
+    return count === null && total === null ? null : { kind: 'audience', count, total };
 }
 
 async function run(handle) {
@@ -41,8 +54,20 @@ async function run(handle) {
     const seen = new Set();
     const catalog = new Map();
     let connected = false;
+    let audienceTimer;
+    let lastAudience = 0;
+    let checkingAudience = false;
     const timeout = setTimeout(() => { finish('timeout'); }, 40000);
-    const finish = kind => process.stdout.write(JSON.stringify({ kind }) + '\n', () => process.exit(kind === 'error' ? 1 : 0));
+    const finish = kind => {
+        connected = false;
+        clearInterval(audienceTimer);
+        process.stdout.write(JSON.stringify({ kind }) + '\n', () => process.exit(kind === 'error' ? 1 : 0));
+    };
+    const publishAudience = audience => {
+        if (!audience || !connected) return;
+        if (audience.count !== null) lastAudience = Date.now();
+        emit(audience);
+    };
     let reportedError = false;
     process.stdin.resume();
     process.stdin.on('end', () => process.exit());
@@ -50,11 +75,10 @@ async function run(handle) {
         if (connected && !reportedError) { reportedError = true; emit({ kind: 'error' }); }
     });
     connection.on(ControlEvent.DISCONNECTED, () => { if (connected) finish('disconnected'); });
-    connection.on(WebcastEvent.STREAM_END, () => { if (connected) finish('disconnected'); });
+    connection.on(WebcastEvent.STREAM_END, () => { if (connected) finish('ended'); });
     connection.on(WebcastEvent.ROOM_USER, event => {
         if (!connected) return;
-        const audience = parseAudience(event, connection.roomId);
-        if (audience) emit(audience);
+        publishAudience(parseAudience(event, connection.roomId));
     });
     connection.on(WebcastEvent.GIFT, event => {
         if (!connected) return;
@@ -62,9 +86,23 @@ async function run(handle) {
         if (gift) emit(gift);
     });
     try {
-        await connection.connect();
+        const state = await connection.connect();
         connected = true;
-        emit({ kind: 'connected' });
+        const info = state?.roomInfo ?? connection.roomInfo;
+        const started = asCount((info?.data ?? info)?.create_time);
+        emit({ kind: 'connected', roomId: nonzero(connection.roomId), started });
+        publishAudience(roomAudience(info));
+        audienceTimer = setInterval(async () => {
+            if (!connected || checkingAudience || Date.now() - lastAudience < 45000) return;
+            checkingAudience = true;
+            try {
+                const snapshot = await connection.fetchRoomInfo();
+                if (connected && Number((snapshot?.data ?? snapshot)?.status) === 4) finish('ended');
+                else publishAudience(roomAudience(snapshot));
+            } catch {
+                // The WebView can still provide a count when a room snapshot is unavailable.
+            } finally { checkingAudience = false; }
+        }, 45000);
         connection.fetchAvailableGifts().then(gifts => {
             if (Array.isArray(gifts))
                 for (const gift of gifts) catalog.set(String(gift.id), gift);

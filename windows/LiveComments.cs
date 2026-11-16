@@ -271,12 +271,21 @@ internal sealed class LiveComments : UserControl
                 return;
             }
             var result = await browser.ExecuteScriptAsync(ReadComments);
-            var audienceResult = await browser.ExecuteScriptAsync("document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count]')?.textContent.trim().slice(0, 32) ?? null");
+            var audienceResult = await browser.ExecuteScriptAsync(@"(() => {
+                const known = document.querySelector('[data-e2e=live-viewer-count], [data-e2e=live-view-count], [data-e2e=live-room-viewer-count], [data-e2e=viewer-count]');
+                if (known?.textContent.trim()) return known.textContent.trim().slice(0, 48);
+                const header = document.querySelector('[data-e2e=live-room-header], [data-e2e=live-player], [data-e2e=live-player-container]');
+                for (const item of header?.querySelectorAll('[aria-label], [title]') ?? []) {
+                    const label = (item.getAttribute('aria-label') || item.title || '').trim();
+                    if (/^\d[\d.,\s]*(?:tsd\.?|k|mio\.?|m)?\s*(?:zuschauer(?:\*?in(?:nen)?)?|viewers?)$/i.test(label)) return label.slice(0, 48);
+                }
+                return null;
+            })()");
             if (IsDisposed || current != generation || !isAllowedRoom(browser.Source)) return;
             var audience = json.Deserialize<string>(audienceResult);
-            if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
             var comments = json.Deserialize<List<Comment>>(result);
             SetConnection(comments != null);
+            if (AudienceChanged != null) AudienceChanged(string.IsNullOrWhiteSpace(audience) ? null : audience);
             status.Text = comments == null ? "Warte auf den LIVE-Chat …" : "LIVE-Chat wird mitgelesen.";
             if (comments == null) return;
             foreach (var comment in comments)
