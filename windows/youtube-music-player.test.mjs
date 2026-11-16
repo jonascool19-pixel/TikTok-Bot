@@ -1,14 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { runMusicCommand } from './youtube-extension/player.mjs';
-
-const readJson = async path => JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8'));
-const extension = await readJson('./youtube-extension/manifest.json');
-const host = await readJson('./youtube-native-host.json');
-const id = [...createHash('sha256').update(Buffer.from(extension.key, 'base64')).digest('hex').slice(0, 32)]
-    .map(digit => String.fromCharCode(97 + parseInt(digit, 16))).join('');
-assert.deepEqual(host.allowed_origins, ['chrome-extension://' + id + '/']);
+import { runMusicCommand } from './youtube-music-player.mjs';
 
 const videoId = 'abcdefghijk';
 const entry = { playlistPanelVideoRenderer: { videoId } };
@@ -41,5 +32,12 @@ assert.deepEqual(queries.map(([route]) => route), ['/search', '/music/get_queue'
 queue.items.length = 0;
 assert.deepEqual(await runMusicCommand({ action: 'queue', value: videoId }), { state: 'start' });
 assert.deepEqual(await runMusicCommand({ action: 'next' }), { state: 'no-player' });
+const video = { readyState: 4, paused: true, async play() { this.paused = false; } };
+globalThis.location.search = '?v=' + videoId;
+globalThis.document.querySelector = selector => selector === 'ytmusic-app' ? app : video;
+assert.deepEqual(await runMusicCommand({ action: 'play-current', value: videoId }), { state: 'playing' });
+video.paused = true;
+video.play = async () => { throw { name: 'NotAllowedError' }; };
+assert.deepEqual(await runMusicCommand({ action: 'play-current', value: videoId }), { state: 'autoplay-blocked' });
 globalThis.location = { origin: 'https://example.com' };
 assert.deepEqual(await runMusicCommand({ action: 'status' }), { state: 'wrong-site' });

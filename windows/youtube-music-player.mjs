@@ -8,6 +8,17 @@ export async function runMusicCommand(command) {
         const flag = globalThis.ytcfg?.get?.('LOGGED_IN');
         return { state: 'ready', account: typeof flag === 'boolean' ? (flag ? 'signed-in' : 'signed-out') : null };
     }
+    if (command.action === 'play-current') {
+        if (new URLSearchParams(location.search).get('v') !== command.value) return { state: 'loading' };
+        const video = document.querySelector('ytmusic-player video');
+        if (!video || video.readyState < 2) return { state: 'loading' };
+        try {
+            if (video.paused) await video.play();
+            return { state: video.paused ? 'loading' : 'playing' };
+        } catch (error) {
+            return { state: error.name === 'NotAllowedError' ? 'autoplay-blocked' : 'loading' };
+        }
+    }
     if (command.action === 'search') {
         const query = typeof command.value === 'string' ? command.value.trim() : '';
         if (!query || query.length > 250) return { state: 'invalid' };

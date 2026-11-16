@@ -10,7 +10,6 @@ internal static class Program
     [STAThread]
     private static int Main(string[] arguments)
     {
-        if (YouTubeBrowserBridge.IsNativeHost(arguments)) return YouTubeBrowserBridge.RunNativeHost();
         Application.ThreadException += (sender, args) =>
         {
             ErrorLog.Write("Windows-App", "Unerwarteter Fehler auf der Oberfläche.", args.Exception);
@@ -681,7 +680,6 @@ internal sealed class BotWindow : Form
             ChatReplies.GameReply("Was zockst du gerade?", "Minecraft") == "Das Spiel heißt Minecraft." &&
             ChatReplies.GameReply("Welches Lied läuft?", "Minecraft") == null &&
             YouTubeMusicControl.VideoId("https://music.youtube.com/watch?v=abcdefghijk") == "abcdefghijk" &&
-            YouTubeMusicControl.ParseSearch(@"{""contents"":[{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Testtitel""}]}}}]}},{""musicResponsiveListItemRenderer"":{""playlistItemData"":{""videoId"":""abcdefghijk""},""flexColumns"":[{""musicResponsiveListItemFlexColumnRenderer"":{""text"":{""runs"":[{""text"":""Duplikat""}]}}}]}}]}").Length == 1 &&
             ChatReplies.Suggest("Moin!", "") != null &&
             ChatReplies.Suggest("Wie geht es dir?", "") == "Mir geht’s gut, danke! Und dir?" &&
             ChatReplies.Suggest("Na, wie geht’s dir heute?", "") == "Mir geht’s gut, danke! Und dir?" &&

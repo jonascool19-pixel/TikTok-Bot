@@ -22,10 +22,15 @@ Source: "build\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Flags: dontcopy so
 Source: "build\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Registry]
-Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.tiktokbot.youtube_music"; ValueType: string; ValueData: "{app}\youtube-native-host.json"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.tiktokbot.youtube_music"; Flags: deletekey
 
 [InstallDelete]
 Type: files; Name: "{app}\ai\llama-*.exe"
+Type: files; Name: "{app}\youtube-native-host.json"
+Type: files; Name: "{app}\youtube-extension\manifest.json"
+Type: files; Name: "{app}\youtube-extension\worker.mjs"
+Type: files; Name: "{app}\youtube-extension\player.mjs"
+Type: dirifempty; Name: "{app}\youtube-extension"
 
 [Tasks]
 Name: "desktopicon"; Description: "Desktop-Symbol erstellen"; Flags: unchecked

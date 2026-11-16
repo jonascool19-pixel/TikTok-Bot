@@ -19,7 +19,7 @@ internal sealed class MusicQueue : UserControl
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
     private readonly ComboBox wishSource = new ThemeComboBox { Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Quelle für LIVE-Musikwünsche" };
-    private readonly YouTubeMusicControl pear;
+    private readonly YouTubeMusicControl youtubeMusic;
     private readonly SpotifyQueueControl spotifyQueueControl;
     private readonly Queue<RemoteWish> remotePending = new Queue<RemoteWish>();
     private int wishSession;
@@ -42,7 +42,7 @@ internal sealed class MusicQueue : UserControl
         collect.Text = commands.Wish + " aus LIVE-Chat übernehmen";
         commands.Changed += delegate { collect.Text = commands.Wish + " aus LIVE-Chat übernehmen"; ResetChoices(); };
         this.chatAvailable = chatAvailable;
-        pear = new YouTubeMusicControl(directory, saved) { Dock = DockStyle.Fill };
+        youtubeMusic = new YouTubeMusicControl(directory) { Dock = DockStyle.Fill };
         wishSource.Items.AddRange(new object[] { "Lokale Dateien", "Spotify", "YouTube Music" });
         var sourcePath = Path.Combine(directory, "music-wish-source.txt");
         wishSource.SelectedIndex = 0;
@@ -137,8 +137,8 @@ internal sealed class MusicQueue : UserControl
         local.Controls.AddRange(new Control[] { queue, status, tools });
         var remote = new TabPage("Spotify und Musikwünsche");
         remote.Controls.AddRange(new Control[] { requests, searchTools, spotify, spotifyStatus });
-        var youtubeMusic = new TabPage("YouTube Music");
-        youtubeMusic.Controls.Add(pear);
+        var youtubeMusicTab = new TabPage("YouTube Music");
+        youtubeMusicTab.Controls.Add(youtubeMusic);
         var spotifyQueue = new TabPage("Spotify-Warteschlange");
         spotifyQueue.Controls.Add(spotifyQueueControl);
         AddButton(searchTools, "Wunsch in Spotify-Warteschlange", async delegate
@@ -150,7 +150,7 @@ internal sealed class MusicQueue : UserControl
             if (uri != null) await spotifyQueueControl.Enqueue(uri);
             else await spotifyQueueControl.ShowSearch(title);
         });
-        sources.AddPages(local, remote, spotifyQueue, youtubeMusic,
+        sources.AddPages(local, remote, spotifyQueue, youtubeMusicTab,
             DesktopTab("Apple Music", "AppleMusic"), DesktopTab("Deezer", "Deezer"), DesktopTab("Amazon Music", "AmazonMusic"));
         var wishOptions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
         wishOptions.Controls.AddRange(new Control[] { collect, new Label { Text = "Musikquelle", AutoSize = true }, wishSource, autoPlay });
@@ -265,7 +265,7 @@ internal sealed class MusicQueue : UserControl
                         var matches = await spotifyQueueControl.Search(wish.Query);
                         tracks = matches == null ? null : matches.Take(3).Select(track => new MusicMatch(track.Uri, track.ToString())).ToArray();
                     }
-                    else tracks = await pear.Search(wish.Query);
+                    else tracks = await youtubeMusic.Search(wish.Query);
                     if (!WishIsCurrent(session)) continue;
                     if (tracks == null || tracks.Length == 0)
                     {
@@ -280,7 +280,7 @@ internal sealed class MusicQueue : UserControl
                     id = tracks[0].Id;
                 }
                 if (!WishIsCurrent(session)) continue;
-                var added = source == "YouTube Music" ? await pear.QueueLiveWish(id) : await spotifyQueueControl.Enqueue(id);
+                var added = source == "YouTube Music" ? await youtubeMusic.QueueLiveWish(id) : await spotifyQueueControl.Enqueue(id);
                 if (WishIsCurrent(session))
                     prompt.Text = added ? "Titel in die Warteschlange von " + source + " aufgenommen."
                         : "Titel konnte nicht eingereiht werden. Prüfe die Verbindung zu " + source + ".";
