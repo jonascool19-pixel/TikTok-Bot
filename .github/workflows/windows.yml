@@ -38,7 +38,10 @@ jobs:
           $core = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.Core.dll'
           $forms = Join-Path $sdk 'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
           Copy-Item -LiteralPath @($core, $forms, (Join-Path $sdk 'runtimes/win-x64/native/WebView2Loader.dll')) -Destination $app
-          Copy-Item -LiteralPath windows/SpotifyControl.ps1 -Destination $app
+          Copy-Item -LiteralPath windows/SpotifyControl.ps1, windows/youtube-native-host.json -Destination $app
+          Copy-Item -LiteralPath windows/youtube-extension -Destination $app -Recurse
+          node windows/youtube-extension.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'YouTube Music extension tests failed.' }
           npm ci --prefix windows/gifts --omit=dev --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'Gift receiver dependencies could not be installed.' }
           node windows/gifts/receive.test.mjs
@@ -118,6 +121,14 @@ jobs:
           $giftScript = Join-Path $installed 'gifts/receive.mjs'
           Invoke-CheckedProcess $giftNode ('"{0}"' -f $giftScript)
           $exe = Join-Path $installed 'TikTok-Bot.exe'
+          $chromeKey = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.tiktokbot.youtube_music'
+          $nativeManifest = Join-Path $installed 'youtube-native-host.json'
+          if ((Get-Item -LiteralPath $chromeKey).GetValue('') -ine $nativeManifest) { throw 'Chrome native host is not registered.' }
+          $nativeHost = Get-Content -LiteralPath $nativeManifest -Raw | ConvertFrom-Json
+          if ((Join-Path $installed $nativeHost.path) -ine $exe) { throw 'Chrome native host executable is incorrect.' }
+          foreach ($file in 'manifest.json','worker.mjs','player.mjs') {
+            if (!(Test-Path -LiteralPath (Join-Path $installed "youtube-extension/$file"))) { throw "Chrome extension is missing $file." }
+          }
           $restarted = Get-Process -Name 'TikTok-Bot' -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe
           if (!$restarted) { throw 'The update did not restart TikTok-Bot.' }
           foreach ($process in $restarted) {
@@ -143,6 +154,7 @@ jobs:
           Invoke-CheckedProcess (Join-Path $installed 'unins000.exe') '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
           if (Test-Path -LiteralPath $shortcut) { throw 'Uninstall left the desktop shortcut.' }
           if (Test-Path (Join-Path $installed 'TikTok-Bot.exe')) { throw 'Uninstall left the application installed.' }
+          if (Test-Path -LiteralPath $chromeKey) { throw 'Uninstall left the Chrome native host registered.' }
           "$( (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant() )  TikTok-Bot-Setup.exe" |
             Set-Content -Encoding ascii windows/build/TikTok-Bot-Setup.exe.sha256
           $digest = (Get-FileHash -LiteralPath $installer).Hash.ToLowerInvariant()

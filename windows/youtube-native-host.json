@@ -1,0 +1,9 @@
+{
+  "name": "com.tiktokbot.youtube_music",
+  "description": "TikTok-Bot YouTube Music",
+  "path": "TikTok-Bot.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://gjladlonlpinppagaeolghiohhhacalm/"
+  ]
+}

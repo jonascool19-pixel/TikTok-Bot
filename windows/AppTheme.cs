@@ -57,6 +57,8 @@ internal sealed class AppTheme
             button.Padding = new Padding(7, 3, 7, 3);
             button.FlatAppearance.BorderSize = 0;
             button.BackColor = Selection;
+            var connection = button as ConnectionButton;
+            if (connection != null) connection.ApplyColor(Selection, Ink);
             button.SizeChanged -= ResizeButton;
             button.SizeChanged += ResizeButton;
             Round(button, 9);
@@ -91,6 +93,29 @@ internal sealed class AppTheme
             button.Region = new Region(path);
             if (old != null) old.Dispose();
         }
+    }
+}
+
+internal sealed class ConnectionButton : Button
+{
+    private Color normalColor = SystemColors.Control;
+    private Color normalText = SystemColors.ControlText;
+    private bool connected;
+
+    internal void SetConnected(bool value, string defaultText, string connectedText)
+    {
+        connected = value;
+        Text = value ? connectedText : defaultText;
+        ApplyColor(normalColor, normalText);
+    }
+
+    internal void ApplyColor(Color normal, Color ink)
+    {
+        normalColor = normal;
+        normalText = ink;
+        if (SystemInformation.HighContrast) return;
+        BackColor = FlatAppearance.MouseOverBackColor = connected ? Color.FromArgb(20, 105, 62) : normalColor;
+        ForeColor = connected ? Color.White : normalText;
     }
 }
 

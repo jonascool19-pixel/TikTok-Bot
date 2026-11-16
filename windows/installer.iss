@@ -21,6 +21,9 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 Source: "build\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Flags: dontcopy solidbreak
 Source: "build\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
+[Registry]
+Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.tiktokbot.youtube_music"; ValueType: string; ValueData: "{app}\youtube-native-host.json"; Flags: uninsdeletekey
+
 [InstallDelete]
 Type: files; Name: "{app}\ai\llama-*.exe"
 

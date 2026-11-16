@@ -10,6 +10,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] arguments)
     {
+        if (YouTubeBrowserBridge.IsNativeHost(arguments)) return YouTubeBrowserBridge.RunNativeHost();
         Application.ThreadException += (sender, args) =>
         {
             ErrorLog.Write("Windows-App", "Unerwarteter Fehler auf der Oberfläche.", args.Exception);

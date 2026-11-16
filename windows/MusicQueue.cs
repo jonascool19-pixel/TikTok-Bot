@@ -14,6 +14,7 @@ internal sealed class MusicQueue : UserControl
     private readonly ListBox queue = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwarteschlange" };
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 28, Text = "Keine Wiedergabe" };
     private bool playing;
+    private readonly ConnectionButton spotifyCheck = new ConnectionButton { Text = "Spotify prüfen", AutoSize = true };
     private readonly Label spotifyStatus = new Label { Dock = DockStyle.Bottom, Height = 27, Text = "Spotify Desktop" };
     private readonly ListBox requests = new ListBox { Dock = DockStyle.Fill, AccessibleName = "Musikwünsche" };
     private readonly CheckBox collect = new CheckBox { Text = "#Musikwunsch aus LIVE-Chat übernehmen", AutoSize = true };
@@ -106,7 +107,8 @@ internal sealed class MusicQueue : UserControl
         };
         queue.DisplayMember = "Name";
         var spotify = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(6) };
-        AddButton(spotify, "Spotify prüfen", () => ControlSpotify(spotify, "Status"));
+        spotify.Controls.Add(spotifyCheck);
+        spotifyCheck.Click += delegate { ControlSpotify(spotify, "Status"); };
         AddButton(spotify, "Spotify: Wiedergabe / Pause", () => ControlSpotify(spotify, "Toggle"));
         AddButton(spotify, "Vorheriger Titel", () => ControlSpotify(spotify, "Previous"));
         AddButton(spotify, "Nächster Titel", () => ControlSpotify(spotify, "Next"));
@@ -426,6 +428,7 @@ internal sealed class MusicQueue : UserControl
                 }
             });
             if (IsDisposed) return;
+            if (provider == "Spotify") spotifyCheck.SetConnected(result == 0 || (result == 3 && action != "Status"), "Spotify prüfen", "Spotify verbunden");
             switch (result)
             {
                 case 0: feedback.Text = action == "Status" ? name + " Desktop verbunden." : name + " hat den Befehl angenommen."; break;
@@ -437,7 +440,11 @@ internal sealed class MusicQueue : UserControl
         }
         catch (System.ComponentModel.Win32Exception error)
         {
-            if (!IsDisposed) feedback.Text = "Windows-Mediensteuerung nicht verfügbar.";
+            if (!IsDisposed)
+            {
+                feedback.Text = "Windows-Mediensteuerung nicht verfügbar.";
+                if (provider == "Spotify") spotifyCheck.SetConnected(false, "Spotify prüfen", "Spotify verbunden");
+            }
             ErrorLog.Write(name, "Windows-Mediensteuerung konnte nicht gestartet werden.", error);
         }
         finally { if (!IsDisposed) buttons.Enabled = true; }
