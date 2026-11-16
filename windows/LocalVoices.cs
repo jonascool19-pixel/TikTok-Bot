@@ -8,15 +8,21 @@ using System.Threading.Tasks;
 
 internal static class LocalVoices
 {
-    internal static readonly string[] Names = { "Kerstin", "Thorsten · neutral", "Thorsten · amüsiert", "Thorsten · überrascht", "Thorsten · flüsternd", "Thorsten · müde" };
-    private static readonly int[] Speakers = { 0, 4, 0, 6, 7, 5 };
+    internal static readonly string[] Names = { "Kerstin", "Thorsten · neutral", "Thorsten · amüsiert", "Thorsten · überrascht", "Thorsten · flüsternd", "Thorsten · müde",
+        "Eva K.", "Ramona", "LibriSpeech · Stimme 1", "LibriSpeech · Stimme 2" };
+    private static readonly int[] Speakers = { 0, 4, 0, 6, 7, 5, 0, 0, 0, 63 };
+    private static readonly string[] Models = {
+        "de_DE-kerstin-low", "de_DE-thorsten_emotional-medium", "de_DE-thorsten_emotional-medium",
+        "de_DE-thorsten_emotional-medium", "de_DE-thorsten_emotional-medium", "de_DE-thorsten_emotional-medium",
+        "de_DE-eva_k-x_low", "de_DE-ramona-low", "de_DE-mls-medium", "de_DE-mls-medium"
+    };
 
     internal static Task Speak(int index, string text, int volume, int speed, CancellationToken token)
     {
         return Task.Run(() =>
         {
             var piper = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "piper");
-            var model = index == 0 ? "de_DE-kerstin-low" : "de_DE-thorsten_emotional-medium";
+            var model = Models[index];
             var output = Path.Combine(Path.GetTempPath(), "TikTokBot-" + Guid.NewGuid().ToString("N") + ".wav");
             try
             {

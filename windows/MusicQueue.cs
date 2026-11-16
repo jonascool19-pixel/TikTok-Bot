@@ -179,7 +179,7 @@ internal sealed class MusicQueue : UserControl
         if (selection.Success)
         {
 
-            var key = handleKey.Length > 0 && choices.ContainsKey(handleKey) ? handleKey : nameKey;
+            var key = handleKey.Length > 0 ? handleKey : nameKey;
             Choice choice;
             if (choices.TryGetValue(key, out choice) && choice.Expires > DateTime.UtcNow)
             {
@@ -192,6 +192,7 @@ internal sealed class MusicQueue : UserControl
                 }
                 return true;
             }
+            return true;
         }
         var match = MusicCommands.Match(message, MusicCommands.WishPattern(commands.Wish) + @"\s+(.{2,150})\z");
         if (!match.Success) return commands.IsCommand(message);
@@ -373,6 +374,29 @@ internal sealed class MusicQueue : UserControl
         internal FileInfo[] Tracks;
         internal MusicMatch[] Remote;
         internal DateTime Expires;
+    }
+
+    internal static async Task<bool> VerifyChoices(string directory)
+    {
+        using (var settings = new MusicCommands(directory, delegate { }))
+        using (var music = new MusicQueue(() => true, directory, delegate { }, settings))
+        {
+            music.collect.Checked = true;
+            var first = new FileInfo(Path.Combine(directory, "A.mp3"));
+            var second = new FileInfo(Path.Combine(directory, "B.mp3"));
+            var until = DateTime.UtcNow.AddMinutes(1);
+            music.choices["@erste"] = new Choice { Tracks = new[] { first }, Expires = until };
+            music.choices["@zweite"] = new Choice { Tracks = new[] { second }, Expires = until };
+            music.choices["name:Anzeigename"] = new Choice { Tracks = new[] { second }, Expires = until };
+            if (!await music.ConsiderRequest("erste", "Anzeigename", "#Antowrt 1") ||
+                !await music.ConsiderRequest("dritte", "Anzeigename", "#Antwort 1") ||
+                !await music.ConsiderRequest("zweite", "Anzeigename", "#Antwort 3") ||
+                music.queue.Items.Count != 0 || music.choices.Count != 3) return false;
+            return await music.ConsiderRequest("zweite", "Anzeigename", "#antwort 1") &&
+                await music.ConsiderRequest("erste", "Anzeigename", "#Antwort 1") &&
+                music.choices.Count == 1 && music.queue.Items.Count == 2 &&
+                ReferenceEquals(music.queue.Items[0], second) && ReferenceEquals(music.queue.Items[1], first);
+        }
     }
 
     private void Search(string title)

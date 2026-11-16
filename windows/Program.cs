@@ -40,7 +40,7 @@ internal sealed class BotWindow : Form
     private readonly Label account = new Label { Dock = DockStyle.Bottom, Height = 26, Text = "Bot-Konto: noch nicht erkannt" };
     private readonly Timer accountTimer = new Timer { Interval = 4000 };
     private bool checkingAccount;
-    private readonly Timer liveTimer = new Timer { Interval = 60000 };
+    private readonly Timer liveTimer = new Timer { Interval = 20000 };
     private readonly CheckBox monitor = new CheckBox { Text = "LIVE automatisch prüfen", AutoSize = true };
     private readonly CheckBox muteLive = new CheckBox { Text = "TikTok-LIVE-Ton stumm", AutoSize = true, Checked = true };
     private string watchedRoom;
@@ -331,7 +331,7 @@ internal sealed class BotWindow : Form
         var intervals = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
         var updateTimer = new Timer();
         AddInterval(intervals, "Updates prüfen (Minuten)", "update-interval", 60, updateTimer);
-        AddInterval(intervals, "LIVE prüfen (Minuten)", "live-interval", 1, liveTimer);
+        AddInterval(intervals, "LIVE prüfen (Sekunden)", "live-interval-seconds", 20, liveTimer, 20, 14400, 1000, "live-interval");
         updateTimer.Tick += async delegate { await updater.Check(); };
         if (!smokeTest)
             Shown += async delegate { updateTimer.Start(); await updater.Check(); };
@@ -387,7 +387,11 @@ internal sealed class BotWindow : Form
         speechTab.Controls.Add(speechFilters);
         var commandsTab = new TabPage("Befehle");
         commandsTab.Controls.Add(commands);
-        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, commandsTab, helpTab };
+        var replyFiltersTab = new TabPage("KI-Antwortfilter");
+        var replyFilters = new SpeechFilters(data, ShowSettingsFeedback, true) { Dock = DockStyle.Fill };
+        replies.ShouldReply = replyFilters.ShouldRead;
+        replyFiltersTab.Controls.Add(replyFilters);
+        var settingsPages = new[] { accountTab, updatesTab, liveTab, errorTab, intervalsTab, designsTab, speechTab, replyFiltersTab, commandsTab, helpTab };
         foreach (var page in settingsPages)
         {
             menu.Items.Add(page.Text);
@@ -450,23 +454,30 @@ internal sealed class BotWindow : Form
         Shown += InitializeBrowser;
     }
 
-    private void AddInterval(Control panel, string label, string file, int fallback, Timer timer)
+    private void AddInterval(Control panel, string label, string file, int fallback, Timer timer,
+        int minimum = 1, int maximum = 240, int millisecondsPerUnit = 60000, string legacyMinutesFile = null)
     {
         var path = Path.Combine(data, file + ".txt");
-        var minutes = fallback;
+        var interval = fallback;
         try
         {
             int saved;
-            if (File.Exists(path) && int.TryParse(File.ReadAllText(path), out saved) && saved >= 1 && saved <= 240) minutes = saved;
+            if (File.Exists(path) && int.TryParse(File.ReadAllText(path), out saved) && saved >= minimum && saved <= maximum)
+                interval = saved;
+            else if (!File.Exists(path) && legacyMinutesFile != null)
+            {
+                var legacy = Path.Combine(data, legacyMinutesFile + ".txt");
+                if (File.Exists(legacy) && int.TryParse(File.ReadAllText(legacy), out saved) && saved >= 1 && saved <= 240)
+                    interval = saved * 60;
+            }
         }
         catch (IOException error) { ErrorLog.Write("Einstellungen", "Prüfintervall konnte nicht geladen werden.", error); }
         catch (UnauthorizedAccessException error) { ErrorLog.Write("Einstellungen", "Prüfintervall konnte nicht geladen werden.", error); }
-        var field = new NumericUpDown { Minimum = 1, Maximum = 240, Value = minutes, Width = 100, AccessibleName = label };
-        timer.Interval = minutes * 60000;
+        var field = new NumericUpDown { Minimum = minimum, Maximum = maximum, Value = interval, Width = 100, AccessibleName = label };
+        timer.Interval = interval * millisecondsPerUnit;
         field.ValueChanged += delegate
         {
-            timer.Interval = (int)field.Value * 60000;
-            SavePreference(path, ((int)field.Value).ToString());
+            if (SavePreference(path, ((int)field.Value).ToString())) timer.Interval = (int)field.Value * millisecondsPerUnit;
         };
         panel.Controls.Add(new Label { Text = label, AutoSize = true });
         panel.Controls.Add(field);
@@ -592,7 +603,8 @@ internal sealed class BotWindow : Form
                             LiveAddress("https://tiktok.com/@creator/live?share=1") == "https://www.tiktok.com/@creator/live" &&
                             LiveAddress("https://www.tiktok.com.example.org/@creator/live") == null &&
                             await LiveComments.VerifyReader(core) && VerifyErrorLog() && LiveComments.VerifyVoicePreferences(data) &&
-                            VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) && MusicCommands.Verify(data) &&
+                            VerifyHeaderActions() && VerifyLoginButton() && SpeechFilters.Verify(data) &&
+                            await MusicQueue.VerifyChoices(data) && MusicCommands.Verify(data) &&
                             await ChatReplies.VerifyBundledModel())
                             ExitCode = 0;
                     }
@@ -673,11 +685,24 @@ internal sealed class BotWindow : Form
             MusicCommands.Selection("#antwort 2", MusicCommands.DefaultAnswer).Groups[1].Value == "2" &&
             MusicCommands.Selection("#\u200B antwort\u00A02", MusicCommands.DefaultAnswer).Groups[1].Value == "2" &&
             MusicCommands.Selection("#Wahl 3", "#wahl").Groups[1].Value == "3" &&
+            !MusicCommands.Selection("#Antowrt 1", MusicCommands.DefaultAnswer).Success &&
+            !MusicCommands.Selection("#Antwort 4", MusicCommands.DefaultAnswer).Success &&
+            !MusicCommands.Selection("#Antwort1", MusicCommands.DefaultAnswer).Success &&
+            MusicCommands.IsCommand("#Antowrt 1", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.IsCommand("#Antwort: 2", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.IsCommand("#Antwort1", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.IsCommand("Antwort 1", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.IsCommand("#Antworten 1", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
+            MusicCommands.IsCommand("#Wahl2", "#Musik", "#Wahl2") &&
+            !MusicCommands.IsCommand("#Andere 2", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
             !MusicCommands.IsCommand("Wie geht ein Musikwunsch?", MusicCommands.DefaultWish, MusicCommands.DefaultAnswer) &&
             ReplyFingerprint("Hallo\u200B  Mello") == ReplyFingerprint("HalloMello") &&
             ChatReplies.GameReply("Was ist das denn für ein Spiel?", "Motor Town") == "Das Spiel heißt Motor Town." &&
             ChatReplies.GameReply("Was für Spiele spielst du?", "Euro Truck Simulator 2") == "Das Spiel heißt Euro Truck Simulator 2." &&
             ChatReplies.GameReply("Was zockst du gerade?", "Minecraft") == "Das Spiel heißt Minecraft." &&
+            ChatReplies.GameReply("Wie heisst, das Spiel?", "Motor Town") == "Das Spiel heißt Motor Town." &&
+            ChatReplies.GameReply("für für ein Spiele ist das", "Motor Town") == "Das Spiel heißt Motor Town." &&
+            ChatReplies.GameReply("Wie heißt das Spiel?", "") == "Ich habe gerade keinen Spielnamen. Frag am besten den Streamer." &&
             ChatReplies.GameReply("Welches Lied läuft?", "Minecraft") == null &&
             YouTubeMusicControl.VideoId("https://music.youtube.com/watch?v=abcdefghijk") == "abcdefghijk" &&
             ChatReplies.Suggest("Moin!", "") != null &&
@@ -699,6 +724,7 @@ internal sealed class BotWindow : Form
             ChatReplies.CleanAiReply(" Klar, gerne! ") == "Klar, gerne!" &&
             ChatReplies.CleanAiReply("Antwort: Wir spielen ETS2.") == "Wir spielen ETS2." &&
             ChatReplies.CleanAiReply("Vorher: Kommentar (Spiel: ETS2)") == null &&
+            ChatReplies.CleanAiReply("Die Antwort wurde von Tach erhalten.") == null &&
             ChatReplies.CleanAiReply("{\"kommentar\":\"Welches Spiel?\"}") == null &&
             ChatReplies.CleanAiReply("Welches Spiel?", "Welches Spiel?") == null &&
             IsAllowedRoom("https://www.tiktok.com/@Creator/live?share=1", LiveAddress("@creator")) &&

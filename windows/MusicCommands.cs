@@ -84,17 +84,61 @@ internal sealed class MusicCommands : UserControl
 
     internal static bool IsCommand(string text, string wish, string answer)
     {
-        return Match(text, WishPattern(wish) + @"(?:\s|$)").Success ||
-            Match(text, Regex.Escape(answer) + @"(?:\s|$)").Success;
+        var clean = Clean(text);
+        // Recognition here only suppresses chat replies. Playback still requires the strict parser.
+        if (Regex.IsMatch(clean, @"\A!(?:song|wunsch)(?![\p{L}\p{Nd}_])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        var match = Regex.Match(clean, @"\A#([\p{L}\p{Nd}_]+)");
+        if (!match.Success)
+        {
+            var selection = Regex.Match(clean, @"\A([\p{L}\p{Nd}_]+)\s*[:=]?\s+(?:\d+|eins|zwei|drei)(?:\s|[.!?]|$)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return selection.Success && (LooksLike(selection.Groups[1].Value, answer) ||
+                LooksLike(selection.Groups[1].Value, DefaultAnswer));
+        }
+        var hashtag = match.Groups[1].Value;
+        if (hashtag.Length == 0) return false;
+        if (("#" + hashtag).Equals(wish, StringComparison.OrdinalIgnoreCase) ||
+            ("#" + hashtag).Equals(answer, StringComparison.OrdinalIgnoreCase)) return true;
+        hashtag = Regex.Replace(hashtag, @"[_\p{Nd}]+\z", "");
+        return hashtag.Equals("antworten", StringComparison.OrdinalIgnoreCase) ||
+            LooksLike(hashtag, wish) || LooksLike(hashtag, answer) ||
+            LooksLike(hashtag, DefaultWish) || LooksLike(hashtag, DefaultAnswer);
+    }
+
+    private static bool LooksLike(string input, string command)
+    {
+        var expected = command.Substring(1);
+        if (input.Equals(expected, StringComparison.OrdinalIgnoreCase)) return true;
+        if (expected.Length < 5 || Math.Abs(input.Length - expected.Length) > 1) return false;
+        input = input.ToUpperInvariant();
+        expected = expected.ToUpperInvariant();
+        if (input.Length == expected.Length)
+        {
+            var position = 0;
+            while (position < input.Length && input[position] == expected[position]) position++;
+            if (position == input.Length) return true;
+            return input.Substring(position + 1) == expected.Substring(position + 1) ||
+                (position + 1 < input.Length && input[position] == expected[position + 1] &&
+                input[position + 1] == expected[position] && input.Substring(position + 2) == expected.Substring(position + 2));
+        }
+        var longer = input.Length > expected.Length ? input : expected;
+        var shorter = input.Length > expected.Length ? expected : input;
+        var common = 0;
+        while (common < shorter.Length && longer[common] == shorter[common]) common++;
+        return longer.Substring(common + 1) == shorter.Substring(common);
     }
 
     internal static string WishPattern(string command) { return "(?:" + Regex.Escape(command) + "|!song|!wunsch)"; }
 
     internal static Match Match(string text, string pattern)
     {
-        var clean = Regex.Replace(text.Trim(), @"[\p{Cf}\uFE0F]", "");
-        clean = Regex.Replace(clean, @"\A#\s+", "#");
-        return Regex.Match(clean, @"\A" + pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return Regex.Match(Clean(text), @"\A" + pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    internal static string Clean(string text)
+    {
+        var clean = Regex.Replace(text ?? "", @"[\p{Cf}\uFE0F]", "").Trim().Replace('＃', '#');
+        return Regex.Replace(clean, @"\A#\s+", "#");
     }
 
     internal static bool Verify(string directory)
@@ -112,6 +156,6 @@ internal sealed class MusicCommands : UserControl
 
     internal static Match Selection(string text, string answer)
     {
-        return Match(text, "(?:" + Regex.Escape(answer) + @"\s*)?([123])\z");
+        return Match(text, Regex.Escape(answer) + @"\s+([123])\z");
     }
 }

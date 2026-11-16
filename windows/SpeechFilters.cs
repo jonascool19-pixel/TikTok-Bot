@@ -13,6 +13,8 @@ internal sealed class SpeechFilters : UserControl
     private readonly Label status = new Label { Dock = DockStyle.Bottom, Height = 28 };
     private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 65536 };
     private readonly string path;
+    private readonly string titleText;
+    private readonly bool forReplies;
     private readonly Action<bool> saved;
     private List<Rule> rules = new List<Rule>
     {
@@ -20,10 +22,15 @@ internal sealed class SpeechFilters : UserControl
         new Rule { Text = "#Antwort" }
     };
 
-    internal SpeechFilters(string directory, Action<bool> saved)
+    internal SpeechFilters(string directory, Action<bool> saved, bool forReplies = false)
     {
         this.saved = saved;
-        path = Path.Combine(directory, "speech-filters.json");
+        this.forReplies = forReplies;
+        titleText = forReplies ? "KI-Antwortfilter" : "Vorlesesperren";
+        if (forReplies) rules.Clear();
+        path = Path.Combine(directory, forReplies ? "reply-filters.json" : "speech-filters.json");
+        list.AccessibleName = titleText;
+        term.AccessibleName = "Text der Regel";
         try
         {
             if (File.Exists(path))
@@ -36,12 +43,13 @@ internal sealed class SpeechFilters : UserControl
         }
         catch (Exception error)
         {
-            status.Text = "Vorlesesperren konnten nicht geladen werden. Die Standardregeln sind aktiv.";
-            ErrorLog.Write("Vorlesesperren", "Regeln konnten nicht geladen werden.", error);
+            status.Text = titleText + " konnten nicht geladen werden.";
+            ErrorLog.Write(titleText, "Regeln konnten nicht geladen werden.", error);
         }
 
-        var title = new Label { Dock = DockStyle.Top, Height = 39, Text = "Vorlesesperren", Font = AppTheme.HeadingFont };
+        var title = new Label { Dock = DockStyle.Top, Height = 39, Text = titleText, Font = AppTheme.HeadingFont };
         var help = new Label { Dock = DockStyle.Top, Height = 42, Text =
+            forReplies ? "Treffer erhalten keine Chatantwort. Musikbefehle und typische Tippfehler werden bereits ausgefiltert. Gültige Musikbefehle funktionieren weiterhin." :
             "Trifft eine Regel zu, bleibt die ganze Nachricht stumm. Chat und Musikwünsche werden weiterhin verarbeitet." };
         var editor = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 5, 0, 8) };
         editor.Controls.AddRange(new Control[] { term, prefix });
@@ -60,7 +68,7 @@ internal sealed class SpeechFilters : UserControl
 
     internal bool ShouldRead(string message)
     {
-        var text = message.TrimStart();
+        var text = forReplies ? MusicCommands.Clean(message) : message.TrimStart();
         return !rules.Any(rule => rule.Prefix
             ? text.StartsWith(rule.Text, StringComparison.OrdinalIgnoreCase)
             : text.IndexOf(rule.Text, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -68,9 +76,9 @@ internal sealed class SpeechFilters : UserControl
 
     private void SaveRule(bool replace)
     {
-        var value = term.Text.Trim();
+        var value = forReplies ? MusicCommands.Clean(term.Text) : term.Text.Trim();
         var index = replace ? list.SelectedIndex : rules.Count;
-        if (value.Length == 0) { status.Text = "Gib den Text ein, der stumm bleiben soll."; return; }
+        if (value.Length == 0) { status.Text = "Gib den Text ein, den du sperren möchtest."; return; }
         if (index < 0) { status.Text = "Wähle zuerst eine Regel aus."; return; }
         if (!replace && rules.Count >= 100) { status.Text = "Die Liste enthält bereits 100 Regeln."; return; }
         if (rules.Where((rule, position) => !replace || position != index).Any(rule =>
@@ -146,7 +154,17 @@ internal sealed class SpeechFilters : UserControl
                 if (reopened.list.Items.Count != count - 1) return false;
             }
         }
-        using (var empty = new SpeechFilters(directory, delegate { })) return empty.ShouldRead("#Antwort 2");
+        using (var empty = new SpeechFilters(directory, delegate { }))
+            if (!empty.ShouldRead("#Antwort 2")) return false;
+        using (var replies = new SpeechFilters(directory, delegate { }, true))
+        {
+            replies.term.Text = "#Testregel";
+            replies.prefix.Checked = true;
+            replies.SaveRule(false);
+        }
+        using (var replies = new SpeechFilters(directory, delegate { }, true))
+        using (var speech = new SpeechFilters(directory, delegate { }))
+            return !replies.ShouldRead(" ＃TESTREGEL ?") && replies.ShouldRead("Was heißt #Testregel?") && speech.ShouldRead("#Testregel");
     }
 
     private sealed class Rule

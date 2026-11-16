@@ -53,6 +53,7 @@ internal sealed class ChatReplies : UserControl
     private Dictionary<string, string> custom = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     private readonly MusicCommands commands;
+    internal Func<string, bool> ShouldReply;
 
     internal ChatReplies(Func<bool> requestsEnabled, string directory, Action<bool> saved, MusicCommands commands)
     {
@@ -280,6 +281,11 @@ internal sealed class ChatReplies : UserControl
             if (test) status.Text = "Dieser Befehl wird unter Musik verarbeitet.";
             return;
         }
+        if (ShouldReply != null && !ShouldReply(text))
+        {
+            if (test) status.Text = "Der KI-Antwortfilter sperrt diesen Kommentar.";
+            return;
+        }
         var gameName = autoGame.Checked && !string.IsNullOrWhiteSpace(detectedGame) ? detectedGame : game.Text;
         var result = GameReply(text, gameName);
         if (result == null && !custom.TryGetValue(NormalizeQuestion(text), out result))
@@ -425,6 +431,7 @@ internal sealed class ChatReplies : UserControl
         var result = Regex.Replace(raw ?? "", @"[\s\p{Cc}]+", " ").Trim().Trim('"', '“', '”', '„').Trim();
         result = Regex.Replace(result, @"\A(?:antwort(?:vorschlag)?|assistant|assistent)\s*:\s*", "", RegexOptions.IgnoreCase);
         if (result.Length == 0 || result.TrimEnd('.').Equals("KEINE_ANTWORT", StringComparison.OrdinalIgnoreCase) ||
+            Regex.IsMatch(result, @"\A(?:die )?antwort wurde\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
             string.Equals(result.TrimEnd('.', '!', '?').TrimEnd(), (original ?? "").Trim().TrimEnd('.', '!', '?').TrimEnd(), StringComparison.OrdinalIgnoreCase) ||
             Regex.IsMatch(result, @"https?://|www\.|<\|[^>]*\|>|[{}]|(?:\b(?:vorher|kommentar|spiel|benutzer|system|user|prompt)\s*[""']?\s*[:=(])|\A`", RegexOptions.IgnoreCase)) return null;
         return result.Length <= 150 ? result : result.Substring(0, char.IsHighSurrogate(result[149]) ? 149 : 150).TrimEnd();
@@ -491,10 +498,11 @@ internal sealed class ChatReplies : UserControl
 
     internal static string GameReply(string text, string game)
     {
-        var message = Regex.Replace(text.Trim().ToLowerInvariant(), @"\s+", " ");
-        if (!Regex.IsMatch(message, @"\b(?:wie (?:hei[ßs]t|nennt sich) (?:das|dein|dieses) (?:spiel|game)|" +
-            @"was (?:ist (?:das |das denn )?für ein (?:spiel|game)|(?:spielst|zockst) (?:du|ihr))|" +
-            @"welche[sr]? (?:spiel|spiele|game)\b|was für (?:ein(?:e)? )?(?:spiel|spiele|game)\b)"))
+        var message = Regex.Replace(MusicCommands.Clean(text).ToLowerInvariant(), @"[^\p{L}\p{N}]+", " ").Trim();
+        if (!Regex.IsMatch(message, @"\b(?:wie (?:hei(?:ß|ss|s)t|nennt sich) (?:(?:das|dein|dieses) )?(?:spiel|game)\b|" +
+            @"was (?:ist (?:(?:das|des)(?: denn| gerade)? )?für (?:ein(?:e|en)? )?(?:spiel|spiele|game)\b|(?:spielst|zockst) (?:du|ihr))|" +
+            @"welche[sr]? (?:spiel|spiele|game)\b|was für (?:ein(?:e)? )?(?:spiel|spiele|game)\b|" +
+            @"für (?:ein(?:e)? )?(?:spiel|spiele|game) (?:ist|war) (?:das|des)\b)"))
             return null;
         return string.IsNullOrWhiteSpace(game) ? "Ich habe gerade keinen Spielnamen. Frag am besten den Streamer." : "Das Spiel heißt " + game.Trim() + ".";
     }
